@@ -27,7 +27,8 @@ const state = {
   activeAccount: null,
   liveData: {},
   loading: false,
-  search: ''
+  search: '',
+  canManage: false
 };
 
 const nav = [
@@ -64,18 +65,21 @@ async function invokeZernio(body){
 async function loadBase(){
   const { data:{session} } = await db.auth.getSession();
   state.session=session;
-  if(!session){ renderLogin(); return; }
+  state.canManage=false;
 
-  const { data:member } = await db.rpc('link_world_is_member');
-  if(member!==true){ renderDenied(); return; }
+  if(session){
+    const { data:member } = await db.rpc('link_world_is_member');
+    state.canManage=member===true;
+  }
 
-  const [b,s]=await Promise.all([
-    db.from('link_world_businesses').select('id,slug,name,sector,city,country,summary,updated_at').order('name'),
-    db.from('link_world_rrss_status_v').select('*').order('business_name')
-  ]);
-  if(b.error) throw b.error;
-  state.businesses=b.data||[];
+  const s=await db.from('link_world_rrss_status_v').select('*').order('business_name');
+  if(s.error) throw s.error;
   state.statuses=s.data||[];
+  state.businesses=state.statuses.map(x=>({
+    id:x.business_id,
+    slug:x.business_slug,
+    name:x.business_name
+  }));
 
   const requested=new URLSearchParams(location.search).get('business');
   state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
@@ -85,16 +89,22 @@ async function loadBase(){
 async function loadBusiness(){
   if(!state.business){ renderApp(); return; }
   const { id } = state.business;
-  const p = await db.from('link_rrss_profiles').select('*').eq('business_id',id).order('created_at');
+  const profileTable=state.canManage?'link_rrss_profiles':'link_rrss_public_profiles_v';
+  const sourceTable=state.canManage?'link_rrss_sources':'link_rrss_public_sources_v';
+  const accountTable=state.canManage?'link_rrss_accounts':'link_rrss_public_accounts_v';
+  const p = await db.from(profileTable).select('*').eq('business_id',id).order('created_at');
+  if(p.error) throw p.error;
   state.profiles=p.data||[];
   const profileIds=state.profiles.map(x=>x.id);
   if(profileIds.length){
-    const s=await db.from('link_rrss_sources').select('id,profile_id,provider,label,status,external_profile_id,capabilities,last_synced_at,last_error,metadata,created_at').in('profile_id',profileIds).order('created_at');
+    const s=await db.from(sourceTable).select('*').in('profile_id',profileIds).order('created_at');
+    if(s.error) throw s.error;
     state.sources=s.data||[];
   } else state.sources=[];
   const sourceIds=state.sources.map(x=>x.id);
   if(sourceIds.length){
-    const a=await db.from('link_rrss_accounts').select('*').in('source_id',sourceIds).order('platform').order('username');
+    const a=await db.from(accountTable).select('*').in('source_id',sourceIds).order('platform').order('username');
+    if(a.error) throw a.error;
     state.accounts=a.data||[];
   } else state.accounts=[];
   if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -103,7 +113,7 @@ async function loadBusiness(){
   state.liveData={};
   syncUrl();
   renderApp();
-  if(state.section==='home' && state.sources[0]) loadHomeLive();
+  if(state.section==='home' && state.sources[0] && state.canManage) loadHomeLive();
 }
 
 function syncUrl(){
@@ -151,7 +161,7 @@ function sidebar(){
         <div class="app-title"><span class="brand-mark small">L</span><div><strong>LINK RRSS</strong><small>aparato social</small></div></div>
         <button class="icon-btn" id="close-mobile">×</button>
       </div>
-      <button class="new-connection" id="quick-connect"><span>＋</span>Nueva conexión</button>
+      ${state.canManage?'<button class="new-connection" id="quick-connect"><span>＋</span>Nueva conexión</button>':'<button class="new-connection" id="admin-access"><span>⌁</span>Administrar</button>'}
       <div class="side-search"><i data-lucide="search"></i><input id="business-search" placeholder="Buscar negocio" value="${safe(state.search)}"></div>
       <div class="side-label">NEGOCIOS</div>
       <nav class="business-list">
@@ -164,7 +174,7 @@ function sidebar(){
       </nav>
       <div class="side-footer">
         <button id="back-world"><i data-lucide="arrow-left"></i><span>Volver a LINK WORLD</span></button>
-        <button id="logout"><span class="user-dot"></span><span>Sesión LINK</span><small>Salir</small></button>
+        ${state.canManage?'<button id="logout"><span class="user-dot"></span><span>Sesión LINK</span><small>Salir</small></button>':'<button id="admin-login"><span class="user-dot public"></span><span>Vista abierta</span><small>Administrar</small></button>'}
       </div>
     </aside>`;
 }
@@ -204,8 +214,7 @@ function emptyMission(){
       <h1>${safe(state.business.name)} todavía no tiene su aparato RRSS.</h1>
       <p>Podemos convertir esta ausencia en una misión de LINK WORLD o conectarlo ahora mismo usando una API de Zernio.</p>
       <div class="empty-actions">
-        <button class="primary" id="create-mission">${st.rrss_status==='mission'?'Ver misión activa':'Generar misión RRSS'}</button>
-        <button id="connect-now">Conectar Zernio</button>
+        ${state.canManage?'<button class="primary" id="create-mission">'+(st.rrss_status==='mission'?'Ver misión activa':'Generar misión RRSS')+'</button><button id="connect-now">Conectar Zernio</button>':'<button class="primary" id="admin-empty">Administrar aparato</button>'}
       </div>
       <div class="flow-line"><span>Negocio</span><i>→</i><span>Perfil RRSS</span><i>→</i><span>Zernio API</span><i>→</i><span>Cuentas</span><i>→</i><span>Actividad</span></div>
     </section>`;
@@ -230,7 +239,7 @@ function homeSection(){
     <div class="home-grid">
       <section class="panel span2">
         <div class="panel-head"><div><span class="eyebrow">ACTIVIDAD</span><h2>Ahora</h2></div><button data-section-jump="activity">Ver todo</button></div>
-        <div id="home-live" class="activity-feed"><div class="skeleton long"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div id="home-live" class="activity-feed">${state.canManage?'<div class="skeleton long"></div><div class="skeleton"></div><div class="skeleton"></div>':'<div class="public-note"><strong>Vista abierta</strong><span>La actividad en vivo se habilita al entrar en modo administración.</span></div>'}</div>
       </section>
       <section class="panel">
         <div class="panel-head"><div><span class="eyebrow">CONEXIONES</span><h2>Estado</h2></div><button data-section-jump="connections">Gestionar</button></div>
@@ -241,14 +250,14 @@ function homeSection(){
 
 function connectionsSection(){
   return `
-    <section class="section-heading"><div><span class="eyebrow">INFRAESTRUCTURA</span><h1>Conexiones</h1><p>Una fuente Zernio puede aportar varias cuentas sociales. Las credenciales se guardan en Supabase Vault.</p></div><button class="primary" id="add-source">＋ Agregar Zernio</button></section>
+    <section class="section-heading"><div><span class="eyebrow">INFRAESTRUCTURA</span><h1>Conexiones</h1><p>Una fuente Zernio puede aportar varias cuentas sociales. Las credenciales se guardan en Supabase Vault.</p></div>${state.canManage?'<button class="primary" id="add-source">＋ Agregar Zernio</button>':'<button class="primary" id="admin-connections">Administrar</button>'}</section>
     <div class="source-list">
       ${state.sources.map(s=>`<article class="source-card">
         <div class="source-head"><div class="source-icon"><i data-lucide="key-round"></i></div><div><strong>${safe(s.label)}</strong><small>Zernio · ${safe(s.metadata?.key_preview||'credencial segura')}</small></div><span class="health-pill ${s.status==='healthy'?'ok':'warn'}"><span></span>${safe(s.status)}</span></div>
         <div class="source-meta"><span>Última sincronización <b>${safe(fmtDate(s.last_synced_at))}</b></span><span>Cuentas <b>${state.accounts.filter(a=>a.source_id===s.id).length}</b></span></div>
         ${s.last_error?`<div class="source-error">${safe(s.last_error)}</div>`:''}
         <div class="source-accounts">${state.accounts.filter(a=>a.source_id===s.id).map(a=>`<div><span class="platform-dot">${safe((a.platform||'?')[0].toUpperCase())}</span><div><strong>${safe(a.username?'@'+a.username:(a.display_name||a.platform))}</strong><small>${safe(a.platform)} · ${safe(a.status)}</small></div></div>`).join('')||'<span class="muted">Sin cuentas detectadas.</span>'}</div>
-        <button class="sync-source" data-source-sync="${s.id}"><i data-lucide="refresh-cw"></i>Sincronizar</button>
+        ${state.canManage?'<button class="sync-source" data-source-sync="'+s.id+'"><i data-lucide="refresh-cw"></i>Sincronizar</button>':''}
       </article>`).join('') || `<article class="panel"><h2>No hay conexiones todavía.</h2><p>Agrega la API Zernio de este negocio para comenzar.</p></article>`}
     </div>`;
 }
@@ -337,6 +346,10 @@ function bind(){
   $('#add-source')?.addEventListener('click',openConnectionModal);
   $('#connect-now')?.addEventListener('click',openConnectionModal);
   $('#create-mission')?.addEventListener('click',createMission);
+  $('#admin-access')?.addEventListener('click',openAdminLoginModal);
+  $('#admin-login')?.addEventListener('click',openAdminLoginModal);
+  $('#admin-empty')?.addEventListener('click',openAdminLoginModal);
+  $('#admin-connections')?.addEventListener('click',openAdminLoginModal);
   $('#refresh')?.addEventListener('click',loadBusiness);
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
   $('#back-world')?.addEventListener('click',()=>{location.href=LINK_WORLD_URL+(state.business?('?business='+encodeURIComponent(state.business.id)):'');});
@@ -361,7 +374,42 @@ function toast(text,error=false){
   setTimeout(()=>el.classList.add('hidden'),3500);
 }
 
+function openAdminLoginModal(){
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal compact-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <span class="eyebrow">MODO ADMINISTRACIÓN</span>
+        <h2>Administrar LINK RRSS</h2>
+        <p>La navegación queda abierta. Solo pedimos sesión LINK para conectar APIs, sincronizar Zernio o crear misiones.</p>
+        <form id="admin-login-form">
+          <label>Correo<input id="admin-email" type="email" autocomplete="username" required></label>
+          <label>Contraseña<input id="admin-password" type="password" autocomplete="current-password" required></label>
+          <button class="primary wide" type="submit">Entrar a administración</button>
+        </form>
+        <div id="admin-login-error" class="connect-status hidden"></div>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+  $('#admin-login-form').onsubmit=async e=>{
+    e.preventDefault();
+    const box=$('#admin-login-error');box.classList.add('hidden');
+    const {error}=await db.auth.signInWithPassword({email:$('#admin-email').value.trim(),password:$('#admin-password').value});
+    if(error){box.textContent=error.message;box.classList.add('error');box.classList.remove('hidden');return;}
+    const {data:member}=await db.rpc('link_world_is_member');
+    if(member!==true){
+      await db.auth.signOut();
+      box.textContent='Esta cuenta no pertenece al equipo autorizado de LINK.';
+      box.classList.add('error');box.classList.remove('hidden');return;
+    }
+    $('#modal-root').innerHTML='';
+    await loadBase();
+  };
+}
+
 async function createMission(){
+  if(!state.canManage){openAdminLoginModal();return;}
   try{
     const {data,error}=await db.rpc('link_rrss_create_mission',{p_business_id:state.business.id});
     if(error)throw error;
@@ -372,6 +420,7 @@ async function createMission(){
 }
 
 function openConnectionModal(){
+  if(!state.canManage){openAdminLoginModal();return;}
   if(!state.business)return;
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop">
@@ -406,6 +455,7 @@ function openConnectionModal(){
 }
 
 async function syncSource(id){
+  if(!state.canManage){openAdminLoginModal();return;}
   toast('Sincronizando Zernio…');
   try{await invokeZernio({action:'source.sync',source_id:id});toast('Conexión actualizada.');await loadBusiness();}
   catch(e){toast(e.message||String(e),true);}
@@ -429,6 +479,7 @@ async function loadHomeLive(){
 }
 
 async function loadInbox(){
+  if(!state.canManage){openAdminLoginModal();return;}
   const el=$('#inbox-live'),a=state.activeAccount,s=sourceForActiveAccount(); if(!el||!a||!s)return;
   el.innerHTML='<div class="panel loading-panel">Consultando Inbox…</div>';
   try{
@@ -441,6 +492,7 @@ async function loadInbox(){
 }
 
 async function loadContent(){
+  if(!state.canManage){openAdminLoginModal();return;}
   const el=$('#content-live'),a=state.activeAccount,s=sourceForActiveAccount();if(!el||!a||!s)return;
   el.innerHTML='<div class="panel loading-panel">Consultando publicaciones…</div>';
   try{
@@ -452,6 +504,7 @@ async function loadContent(){
 }
 
 async function loadAnalytics(){
+  if(!state.canManage){openAdminLoginModal();return;}
   const el=$('#analytics-live'),a=state.activeAccount,s=sourceForActiveAccount();if(!el||!a||!s)return;
   el.innerHTML='<div class="panel loading-panel">Consultando analytics…</div>';
   try{
@@ -469,6 +522,7 @@ async function loadAnalytics(){
 }
 
 async function loadAutomations(){
+  if(!state.canManage){openAdminLoginModal();return;}
   const el=$('#automation-live'),s=sourceForActiveAccount()||state.sources[0];if(!el||!s)return;
   el.innerHTML='<div class="panel loading-panel">Consultando automatizaciones…</div>';
   try{
