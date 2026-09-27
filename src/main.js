@@ -41,6 +41,20 @@ const nav = [
   ['activity','Actividad',Activity]
 ];
 
+const connectPlatforms=[
+  ['instagram','Instagram','IG'],
+  ['facebook','Facebook','f'],
+  ['tiktok','TikTok','TT'],
+  ['youtube','YouTube','YT'],
+  ['threads','Threads','@'],
+  ['linkedin','LinkedIn','in'],
+  ['pinterest','Pinterest','P'],
+  ['reddit','Reddit','r/'],
+  ['googlebusiness','Google Business','G'],
+  ['bluesky','Bluesky','BS'],
+  ['whatsapp','WhatsApp','WA']
+];
+
 function iconFor(platform='') {
   const p=platform.toLowerCase();
   if(p==='instagram') return Instagram;
@@ -60,6 +74,22 @@ async function invokeZernio(body){
   if(error) throw error;
   if(!data?.ok) throw new Error(data?.error || 'No se pudo consultar Zernio.');
   return data;
+}
+
+async function handleZernioReturn(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('zernio_return')!=='1') return;
+  const sourceId=params.get('source');
+  const error=params.get('error');
+  if(error){
+    setTimeout(()=>toast('Zernio: '+(params.get('error_message')||error),true),100);
+  }else if(sourceId && state.canManage){
+    try{await invokeZernio({action:'source.sync',source_id:sourceId});setTimeout(()=>toast('Cuenta conectada y sincronizada.'),100);}
+    catch(e){setTimeout(()=>toast(e.message||String(e),true),100);}
+  }
+  ['zernio_return','source','connected','profileId','accountId','username','error','error_message','request_id','stage','platform'].forEach(k=>params.delete(k));
+  const next=location.pathname+(params.toString()?'?'+params.toString():'');
+  history.replaceState({},'',next);
 }
 
 async function loadBase(){
@@ -84,6 +114,7 @@ async function loadBase(){
   const requested=new URLSearchParams(location.search).get('business');
   state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
   await loadBusiness();
+  await handleZernioReturn();
 }
 
 async function loadBusiness(){
@@ -249,17 +280,62 @@ function homeSection(){
 }
 
 function connectionsSection(){
+  const profile=state.profiles[0]||null;
   return `
-    <section class="section-heading"><div><span class="eyebrow">INFRAESTRUCTURA</span><h1>Conexiones</h1><p>Una fuente Zernio puede aportar varias cuentas sociales. Las credenciales se guardan en Supabase Vault.</p></div>${state.canManage?'<button class="primary" id="add-source">＋ Agregar Zernio</button>':'<button class="primary" id="admin-connections">Administrar</button>'}</section>
-    <div class="source-list">
-      ${state.sources.map(s=>`<article class="source-card">
-        <div class="source-head"><div class="source-icon"><i data-lucide="key-round"></i></div><div><strong>${safe(s.label)}</strong><small>Zernio · ${safe(s.metadata?.key_preview||'credencial segura')}</small></div><span class="health-pill ${s.status==='healthy'?'ok':'warn'}"><span></span>${safe(s.status)}</span></div>
-        <div class="source-meta"><span>Última sincronización <b>${safe(fmtDate(s.last_synced_at))}</b></span><span>Cuentas <b>${state.accounts.filter(a=>a.source_id===s.id).length}</b></span></div>
-        ${s.last_error?`<div class="source-error">${safe(s.last_error)}</div>`:''}
-        <div class="source-accounts">${state.accounts.filter(a=>a.source_id===s.id).map(a=>`<div><span class="platform-dot">${safe((a.platform||'?')[0].toUpperCase())}</span><div><strong>${safe(a.username?'@'+a.username:(a.display_name||a.platform))}</strong><small>${safe(a.platform)} · ${safe(a.status)}</small></div></div>`).join('')||'<span class="muted">Sin cuentas detectadas.</span>'}</div>
-        ${state.canManage?'<button class="sync-source" data-source-sync="'+s.id+'"><i data-lucide="refresh-cw"></i>Sincronizar</button>':''}
-      </article>`).join('') || `<article class="panel"><h2>No hay conexiones todavía.</h2><p>Agrega la API Zernio de este negocio para comenzar.</p></article>`}
-    </div>`;
+    <section class="section-heading zernio-heading">
+      <div><span class="eyebrow">PERFIL / CONEXIONES</span><h1>Conexiones</h1><p>Primero el perfil. Después las redes conectadas a ese perfil, igual que en Zernio.</p></div>
+      ${state.canManage?(state.sources.length?'<button class="primary" id="add-network">＋ Conectar red</button>':'<button class="primary" id="add-source">＋ Conectar Zernio</button>'):'<button class="primary" id="admin-connections">Administrar</button>'}
+    </section>
+
+    <div class="z-connect-shell">
+      <aside class="z-profile-column">
+        <div class="z-block-title"><span>PERFIL</span><small>1 negocio · 1 contexto</small></div>
+        <article class="z-profile-card active">
+          <div class="z-profile-avatar">${safe(state.business.name.slice(0,1).toUpperCase())}</div>
+          <div><strong>${safe(profile?.name||state.business.name)}</strong><small>${safe(state.business.name)} · LINK WORLD</small></div>
+          <span class="status-dot ${profile?'ok':'off'}"></span>
+        </article>
+        <div class="z-profile-note">Todas las cuentas que conectemos aquí pertenecen a este perfil del negocio.</div>
+      </aside>
+
+      <section class="z-connections-main">
+        <div class="z-stepbar">
+          <span class="done"><b>1</b> Perfil</span><i>→</i>
+          <span class="${state.sources.length?'done':'active'}"><b>2</b> Zernio</span><i>→</i>
+          <span class="${state.accounts.length?'done':state.sources.length?'active':''}"><b>3</b> Redes</span>
+        </div>
+
+        ${state.sources.length?state.sources.map(s=>`
+          <article class="z-source">
+            <div class="z-source-top">
+              <div class="zernio-mark">Z</div>
+              <div class="z-source-copy">
+                <span class="eyebrow">FUENTE ZERNIO</span>
+                <h2>${safe(s.label)}</h2>
+                <p>${safe(s.metadata?.external_profile_name||'Perfil Zernio vinculado')}</p>
+              </div>
+              <span class="health-pill ${s.status==='healthy'?'ok':'warn'}"><span></span>${safe(s.status)}</span>
+            </div>
+            <div class="z-account-list">
+              ${state.accounts.filter(a=>a.source_id===s.id).map(a=>`
+                <div class="z-account-row">
+                  <span class="z-platform-badge">${safe((a.platform||'?').slice(0,2).toUpperCase())}</span>
+                  <div><strong>${safe(a.display_name||a.username||a.platform)}</strong><small>${safe(a.username?'@'+a.username:a.platform)}</small></div>
+                  <span class="z-account-cap">${a.can_post===false?'Lectura':'Conectado'}</span>
+                </div>`).join('')||'<div class="z-empty-row">Todavía no hay redes conectadas a este perfil.</div>'}
+            </div>
+            ${state.canManage?'<div class="z-source-actions"><button class="sync-source" data-source-sync="'+s.id+'"><i data-lucide="refresh-cw"></i>Sincronizar</button><button class="connect-network" data-source-connect="'+s.id+'">＋ Conectar otra red</button></div>':''}
+          </article>`).join(''):`
+          <article class="z-empty-source">
+            <div class="zernio-mark large">Z</div>
+            <span class="eyebrow">PASO 2</span>
+            <h2>Vincula este perfil con Zernio</h2>
+            <p>La API key se usa una sola vez para identificar tu espacio Zernio y elegir qué perfil corresponde a ${safe(state.business.name)}.</p>
+            ${state.canManage?'<button class="primary" id="connect-zernio-main">Conectar Zernio</button>':'<button class="primary" id="admin-zernio-main">Administrar</button>'}
+          </article>`}
+      </section>
+    </div>
+  `;
 }
 
 function inboxSection(){
@@ -344,7 +420,10 @@ function bind(){
   $('#business-search')?.addEventListener('input',e=>{state.search=e.target.value;renderApp();$('#business-search')?.focus();});
   $('#quick-connect')?.addEventListener('click',openConnectionModal);
   $('#add-source')?.addEventListener('click',openConnectionModal);
+  $('#connect-zernio-main')?.addEventListener('click',openConnectionModal);
   $('#connect-now')?.addEventListener('click',openConnectionModal);
+  $('#add-network')?.addEventListener('click',()=>openNetworkModal(state.sources[0]?.id));
+  $('#admin-zernio-main')?.addEventListener('click',openAdminLoginModal);
   $('#create-mission')?.addEventListener('click',createMission);
   $('#admin-access')?.addEventListener('click',openAdminLoginModal);
   $('#admin-login')?.addEventListener('click',openAdminLoginModal);
@@ -357,6 +436,7 @@ function bind(){
   $('#close-mobile')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   $('#mobile-scrim')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   document.querySelectorAll('[data-source-sync]').forEach(btn=>btn.onclick=()=>syncSource(btn.dataset.sourceSync));
+  document.querySelectorAll('[data-source-connect]').forEach(btn=>btn.onclick=()=>openNetworkModal(btn.dataset.sourceConnect));
   $('#load-inbox')?.addEventListener('click',loadInbox);
   $('#load-content')?.addEventListener('click',loadContent);
   $('#load-analytics')?.addEventListener('click',loadAnalytics);
@@ -422,36 +502,108 @@ async function createMission(){
 function openConnectionModal(){
   if(!state.canManage){openAdminLoginModal();return;}
   if(!state.business)return;
+  let preview=null;
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop">
-      <section class="modal">
+      <section class="modal z-wizard">
         <button class="modal-close" id="modal-close">×</button>
-        <span class="eyebrow">NUEVA FUENTE</span>
-        <h2>Conectar Zernio</h2>
-        <p>La API se valida en el servidor y se almacena cifrada en Supabase Vault. LINK RRSS no vuelve a mostrarla.</p>
-        <form id="connect-form">
-          <label>Negocio<input value="${safe(state.business.name)}" disabled></label>
-          <label>Nombre de la conexión<input id="source-label" value="Zernio · ${safe(state.business.name)}" required></label>
-          <label>API key Zernio<div class="secret-field"><input id="source-key" type="password" placeholder="sk_…" autocomplete="off" required><span><i data-lucide="shield-check"></i>Vault</span></div></label>
-          <div class="security-note">La key viaja únicamente al Edge Function autenticado y se guarda como secreto. Nunca entra a <code>localStorage</code>.</div>
-          <button class="primary wide" type="submit">Validar y conectar</button>
-        </form>
+        <span class="eyebrow">CONEXIÓN ZERNIO</span>
+        <h2>Vincular perfil</h2>
+        <div class="wizard-steps"><span class="active"><b>1</b> API</span><span><b>2</b> Perfil</span><span><b>3</b> Importar</span></div>
+        <div id="wizard-body">
+          <p>Usaremos la API para abrir tu espacio Zernio y mostrar sus perfiles. Después eliges cuál corresponde a <strong>${safe(state.business.name)}</strong>.</p>
+          <form id="preview-zernio-form">
+            <label>API key Zernio<div class="secret-field"><input id="source-key" type="password" placeholder="sk_…" autocomplete="off" required><span><i data-lucide="shield-check"></i>Vault</span></div></label>
+            <div class="security-note">No elegimos cuentas todavía. Primero validamos el espacio Zernio y sus perfiles.</div>
+            <button class="primary wide" type="submit">Continuar</button>
+          </form>
+        </div>
         <div id="connect-status" class="connect-status hidden"></div>
       </section>
     </div>`;
   createIcons({icons:{ShieldCheck}});
   $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
   $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
-  $('#connect-form').onsubmit=async e=>{
+  $('#preview-zernio-form').onsubmit=async e=>{
     e.preventDefault();
-    const status=$('#connect-status');status.classList.remove('hidden');status.textContent='Validando con Zernio…';
+    const key=$('#source-key').value.trim();
+    const status=$('#connect-status');status.classList.remove('hidden','error');status.textContent='Leyendo perfiles de Zernio…';
     try{
-      const out=await invokeZernio({action:'source.create',business_id:state.business.id,label:$('#source-label').value.trim(),api_key:$('#source-key').value.trim()});
-      status.textContent=`Conectado. ${out.account_count} cuenta(s) detectada(s).`;
-      await loadBusiness();
-      setTimeout(()=>{$('#modal-root').innerHTML='';state.section='connections';renderApp();},700);
+      preview=await invokeZernio({action:'source.preview',api_key:key});
+      status.classList.add('hidden');
+      const profiles=preview.profiles||[];
+      $('#wizard-body').innerHTML=`
+        <p>Encontré <strong>${profiles.length}</strong> perfil(es) en Zernio. Elige el que representa a <strong>${safe(state.business.name)}</strong>.</p>
+        <div class="z-profile-picker">
+          ${profiles.map(p=>`<button type="button" class="z-picker-card" data-zprofile="${safe(p.id)}"><span class="zernio-mark">Z</span><div><strong>${safe(p.name)}</strong><small>${p.is_default?'Perfil predeterminado':'Perfil Zernio'}</small></div><span>→</span></button>`).join('')||'<div class="inline-error">Esta key no devolvió perfiles Zernio.</div>'}
+        </div>`;
+      document.querySelectorAll('[data-zprofile]').forEach(btn=>btn.onclick=()=>saveZernioProfile(key,btn.dataset.zprofile,profiles.find(p=>p.id===btn.dataset.zprofile)));
     }catch(err){status.textContent=err.message||String(err);status.classList.add('error');}
   };
+}
+
+async function saveZernioProfile(apiKey,externalProfileId,profile){
+  const status=$('#connect-status');status.classList.remove('hidden','error');status.textContent='Vinculando perfil e importando cuentas…';
+  try{
+    const out=await invokeZernio({
+      action:'source.create',
+      business_id:state.business.id,
+      label:'Zernio · '+(profile?.name||state.business.name),
+      api_key:apiKey,
+      external_profile_id:externalProfileId
+    });
+    status.textContent='Perfil conectado. '+out.account_count+' cuenta(s) importada(s).';
+    await loadBusiness();
+    setTimeout(()=>{$('#modal-root').innerHTML='';state.section='connections';renderApp();},650);
+  }catch(err){status.textContent=err.message||String(err);status.classList.add('error');}
+}
+
+function openNetworkModal(sourceId){
+  if(!state.canManage){openAdminLoginModal();return;}
+  if(!sourceId){openConnectionModal();return;}
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal z-network-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <span class="eyebrow">ZERNIO / CONECTAR CUENTA</span>
+        <h2>¿Qué red quieres conectar?</h2>
+        <p>Zernio abrirá la autorización oficial de la plataforma y devolverá la cuenta a este perfil.</p>
+        <div class="platform-grid">
+          ${connectPlatforms.map(([id,label,mark])=>`<button type="button" data-platform-connect="${id}"><span class="platform-logo p-${id}">${mark}</span><strong>${label}</strong><small>Conectar</small></button>`).join('')}
+        </div>
+        <button class="advanced-link" id="sync-existing">Ya la conecté en Zernio · sincronizar</button>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+  document.querySelectorAll('[data-platform-connect]').forEach(btn=>btn.onclick=()=>startPlatformConnect(sourceId,btn.dataset.platformConnect));
+  $('#sync-existing').onclick=()=>{ $('#modal-root').innerHTML=''; syncSource(sourceId); };
+}
+
+async function startPlatformConnect(sourceId,platform){
+  try{
+    toast('Abriendo '+platform+' mediante Zernio…');
+    const redirect=new URL(location.origin+location.pathname);
+    redirect.searchParams.set('business',state.business.id);
+    redirect.searchParams.set('source',sourceId);
+    redirect.searchParams.set('zernio_return','1');
+    const out=await invokeZernio({
+      action:'connect.url',
+      source_id:sourceId,
+      platform,
+      redirect_url:redirect.toString(),
+      login_method:platform==='instagram'?'instagram_login':undefined
+    });
+    const data=out.data||{};
+    const authUrl=data.authUrl||data.auth_url||data.url;
+    if(authUrl){ location.href=authUrl; return; }
+    if(data.alreadyConnected || data.accountId){
+      await syncSource(sourceId);
+      $('#modal-root').innerHTML='';
+      return;
+    }
+    throw new Error('Zernio no devolvió una URL de autorización.');
+  }catch(err){toast(err.message||String(err),true);}
 }
 
 async function syncSource(id){
