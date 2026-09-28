@@ -23,6 +23,14 @@ npm install
 npm run dev
 ```
 
+## ChatGPT · informes LINK RRSS
+
+El endpoint de lectura MCP y el método de informes están descritos en
+[`docs/LINK_SOCIAL_REPORTS.md`](docs/LINK_SOCIAL_REPORTS.md). La autenticación
+OAuth 2.1 de Supabase debe quedar habilitada y probada antes de conectar
+el endpoint en ChatGPT. La presencia del código no significa que la app
+ya esté autorizada o publicada en ChatGPT.
+
 ## Deploy
 
 Importar este repositorio como proyecto Vercel `linkrrss`. Vite se detecta automáticamente.

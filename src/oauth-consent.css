@@ -1,0 +1,23 @@
+:root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172020; background: #f7f7f5; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.card { width: min(100%, 520px); background: #fff; border: 1px solid #e4e8e4; border-radius: 20px; padding: clamp(24px, 5vw, 42px); box-shadow: 0 16px 60px #1720200c; }
+.mark { width: 42px; height: 42px; border: 1px solid #172020; display: grid; place-items: center; font-size: 21px; margin-bottom: 32px; }
+.eyebrow { font-size: 11px; letter-spacing: .16em; color: #65816f; font-weight: 700; }
+h1 { margin: 12px 0; font-size: 30px; font-weight: 550; letter-spacing: -.035em; }
+p { line-height: 1.55; color: #54605a; }
+form { margin-top: 24px; }
+label { display: block; font-size: 13px; margin-top: 14px; }
+input { display: block; width: 100%; padding: 12px; border: 1px solid #cbd3cc; border-radius: 8px; margin-top: 7px; font: inherit; }
+dl { margin: 25px 0; border-top: 1px solid #e5e9e5; }
+dl div { display: grid; grid-template-columns: 140px 1fr; gap: 14px; border-bottom: 1px solid #e5e9e5; padding: 12px 0; }
+dt { color: #637169; font-size: 13px; }
+dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.scope { font-size: 13px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 25px; }
+button { background: #172020; color: white; border: 1px solid #172020; border-radius: 8px; padding: 11px 18px; cursor: pointer; font: inherit; }
+button.secondary { background: white; color: #172020; }
+button:disabled { opacity: .45; cursor: wait; }
+#message:not(:empty) { margin-top: 16px; font-size: 13px; color: #a24336; }
+@media(max-width: 460px) { dl div { grid-template-columns: 1fr; gap: 4px; } }
