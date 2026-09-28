@@ -28,6 +28,7 @@ const state = {
   session: null,
   businesses: [],
   statuses: [],
+  gameStates: [],
   business: null,
   profiles: [],
   sources: [],
@@ -88,6 +89,15 @@ function iconFor(platform='') {
   return Globe2;
 }
 function statusForBusiness(id){ return state.statuses.find(x=>x.business_id===id) || {rrss_status:'missing',account_count:0,source_count:0}; }
+function gameStateForBusiness(id){ return state.gameStates.find(x=>x.business_id===id) || null; }
+function gameStateTone(s){
+  if(!s)return 'neutral';
+  if(s.game_state==='critical_frozen'||s.game_state==='red_close')return 'critical';
+  if(s.game_state==='frozen'||s.game_state==='cold')return 'cold';
+  if(s.game_state==='hot'||s.game_state==='very_hot')return 'hot';
+  if(s.game_state==='converted')return 'converted';
+  return 'warm';
+}
 function statusLabel(s){
   return ({missing:'Sin configurar',mission:'Misión abierta',configuring:'Configurando',active:'Activo',attention:'Requiere atención'})[s] || s;
 }
@@ -129,9 +139,15 @@ async function loadBase(){
     state.canManage=member===true;
   }
 
-  const s=await db.from('link_world_rrss_status_v').select('*').order('business_name');
+  const [s,g]=await Promise.all([
+    db.from('link_world_rrss_status_v').select('*').order('business_name'),
+    state.canManage
+      ? db.from('link_game_business_state_v').select('business_id,name,temperature,conversion_percent,game_state,game_state_label,awaiting_evidence_count,next_action_due_at,overdue').order('name')
+      : Promise.resolve({data:[]})
+  ]);
   if(s.error) throw s.error;
   state.statuses=s.data||[];
+  state.gameStates=g.data||[];
   state.businesses=state.statuses.map(x=>({
     id:x.business_id,
     slug:x.business_slug,
