@@ -528,9 +528,21 @@ async function openPasswordRecoveryModal(){
 
 async function handleRecoveryFlow(){
   const params=new URLSearchParams(location.search);
-  const hash=new URLSearchParams(location.hash.replace(/^#/,''));
+  const rawHash=location.hash.replace(/^#/,'').replace(/^\//,'');
+  let decodedHash=rawHash;
+  try{ decodedHash=decodeURIComponent(rawHash); }catch{}
+  const hash=new URLSearchParams(decodedHash);
   const isRecovery=params.get('recovery')==='1' || hash.get('type')==='recovery';
-  if(!isRecovery) return false;
+
+  if(hash.get('access_token') && hash.get('refresh_token')){
+    const {error}=await db.auth.setSession({
+      access_token:hash.get('access_token'),
+      refresh_token:hash.get('refresh_token')
+    });
+    if(error) console.warn('Recovery session error',error);
+  }
+
+  if(!isRecovery && !hash.get('access_token')) return false;
 
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop recovery-lock">
