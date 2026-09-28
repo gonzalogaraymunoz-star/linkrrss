@@ -504,10 +504,10 @@ function sidebar(){
       <div class="side-search"><i data-lucide="search"></i><input id="business-search" placeholder="Buscar negocio" value="${safe(state.search)}"></div>
       <div class="side-label">NEGOCIOS</div>
       <nav class="business-list">
-        ${visible.map(b=>{const st=statusForBusiness(b.id);return `
-          <button class="business-item ${state.business?.id===b.id?'active':''}" data-business="${b.id}">
+        ${visible.map(b=>{const st=statusForBusiness(b.id),gs=gameStateForBusiness(b.id);return `
+          <button class="business-item ${state.business?.id===b.id?'active':''} game-${safe(gs?.game_state||'none')}" data-business="${b.id}">
             <span class="business-avatar">${safe(b.name.slice(0,1).toUpperCase())}</span>
-            <span class="business-copy"><strong>${safe(b.name)}</strong><small>${st.account_count||0} cuentas · ${safe(statusLabel(st.rrss_status))}</small></span>
+            <span class="business-copy"><strong>${safe(b.name)}</strong><small>${st.account_count||0} cuentas · ${safe(statusLabel(st.rrss_status))}${gs?' · '+Math.round(Number(gs.temperature||0))+'°':''}</small></span>
             <span class="status-dot ${statusDot(st.rrss_status)}"></span>
           </button>`}).join('')}
       </nav>
@@ -520,12 +520,14 @@ function sidebar(){
 
 function topbar(){
   const st=state.business?statusForBusiness(state.business.id):{};
+  const gs=state.business?gameStateForBusiness(state.business.id):null;
   return `
     <header class="topbar">
       <button class="mobile-menu" id="mobile-menu">☰</button>
       <div class="crumb"><span>LINK WORLD</span><b>/</b><strong>${safe(state.business?.name||'RRSS')}</strong></div>
       <div class="top-actions">
         ${state.canManage?'<span class="sync-memory '+(state.syncing?'syncing':'')+'"><b>'+safe(syncStateLabel())+'</b><small>'+safe(ago(state.workspace?.last_full_sync_at))+'</small></span>':''}
+        ${gs?'<span class="game-heat-pill '+gameStateTone(gs)+'"><strong>'+Math.round(Number(gs.temperature||0))+'°</strong><span>'+safe(gs.game_state_label)+'</span><small>'+Math.round(Number(gs.conversion_percent||0))+'%</small></span>':''}
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
         <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Forzar sincronización"><i data-lucide="refresh-cw"></i></button>
       </div>
