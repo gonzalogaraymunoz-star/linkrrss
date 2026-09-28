@@ -384,3 +384,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:520px){
   .analytics-metrics,.post-detail-kpis{grid-template-columns:1fr 1fr!important}.content-grid{grid-template-columns:1fr!important}.reply-composer>div{align-items:flex-end}.reply-composer small{max-width:65%}
 }
+
+
+/* Shared LINK game temperature */
+.game-heat-pill{display:grid;grid-template-columns:auto auto auto;align-items:center;gap:5px;border:1px solid #e5e5e1;border-radius:999px;padding:5px 7px;background:#fff}
+.game-heat-pill strong{font-size:9px}.game-heat-pill span{font-size:8px;color:#666}.game-heat-pill small{font-size:7px;color:#999}
+.game-heat-pill.cold{border-color:#b8d1e7;background:#f4f9fd}.game-heat-pill.cold strong{color:#4e7fa8}
+.game-heat-pill.warm{border-color:#e8d69c;background:#fffaf0}.game-heat-pill.warm strong{color:#9a7621}
+.game-heat-pill.hot{border-color:#efb387;background:#fff7f1}.game-heat-pill.hot strong{color:#c65d20}
+.game-heat-pill.critical{border-color:#d8342f;background:#fff5f4}.game-heat-pill.critical strong,.game-heat-pill.critical span{color:#b52c28}
+.game-heat-pill.converted{border-color:#afd6bb;background:#f4fbf6}.game-heat-pill.converted strong{color:#4a865c}
+.business-item.game-red_close,.business-item.game-critical_frozen{box-shadow:inset 3px 0 0 #d8342f}
+.business-item.game-frozen,.business-item.game-cold{box-shadow:inset 3px 0 0 #78a9d4}
+.business-item.game-hot,.business-item.game-very_hot{box-shadow:inset 3px 0 0 #ef7b38}
+.business-item.game-converted{box-shadow:inset 3px 0 0 #52a06d}
