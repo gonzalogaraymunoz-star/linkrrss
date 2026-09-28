@@ -46,6 +46,11 @@ const state = {
   syncing: false,
   businessLoadedId: null,
   period: 'month',
+  periodOffset: 0,
+  persistentPosts: [],
+  persistentConversations: [],
+  accountMemory: [],
+  historyBackfillRequested: new Set(),
   selectedPostId: null,
   selectedConversationId: null,
   conversationMessages: {},
@@ -193,20 +198,32 @@ async function loadBusiness(opts={}){
     state.accounts=a.data||[];
   } else state.accounts=[];
 
+  const accountIds=state.accounts.map(x=>x.id);
   if(state.canManage){
-    const accountIds=state.accounts.map(x=>x.id);
-    const [ws,snaps,runs,activity]=await Promise.all([
+    const [ws,snaps,runs,activity,posts,conversations,memory]=await Promise.all([
       db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
       db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
       db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12),
       accountIds.length
-        ? db.from('link_rrss_activity_cache').select('*').in('account_id',accountIds).order('occurred_at',{ascending:false}).limit(300)
+        ? db.from('link_rrss_activity_cache').select('*').in('account_id',accountIds).order('occurred_at',{ascending:false}).limit(500)
+        : Promise.resolve({data:[]}),
+      accountIds.length
+        ? db.from('link_rrss_posts').select('*').in('account_id',accountIds).order('published_at',{ascending:false}).limit(2000)
+        : Promise.resolve({data:[]}),
+      accountIds.length
+        ? db.from('link_rrss_conversations').select('*').in('account_id',accountIds).order('last_message_at',{ascending:false}).limit(1000)
+        : Promise.resolve({data:[]}),
+      accountIds.length
+        ? db.from('link_rrss_account_memory').select('*').in('account_id',accountIds)
         : Promise.resolve({data:[]})
     ]);
     state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle',ui_state:{}};
     state.snapshots=snaps.data||[];
     state.syncRuns=runs.data||[];
     state.socialActivity=activity.data||[];
+    state.persistentPosts=posts.data||[];
+    state.persistentConversations=conversations.data||[];
+    state.accountMemory=memory.data||[];
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -216,10 +233,24 @@ async function loadBusiness(opts={}){
       state.activeAccount=remembered||state.accounts[0]||null;
     }
   } else {
-    state.workspace=null; state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[];
+    const [posts,memory]=await Promise.all([
+      db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
+      db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
+    ]);
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[];
+    state.persistentPosts=posts.data||[];
+    state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
       state.activeAccount=state.accounts[0]||null;
     }
+    const mem=state.accountMemory.find(x=>x.account_id===state.activeAccount?.id)||state.accountMemory[0]||null;
+    state.workspace={
+      business_id:id,
+      last_section:state.section,
+      last_full_sync_at:mem?.last_successful_sync_at||null,
+      last_sync_status:mem?.last_successful_sync_at?'ok':'idle',
+      ui_state:{}
+    };
   }
 
   state.businessLoadedId=id;
@@ -256,21 +287,48 @@ function ago(v){
   return fmtDate(v);
 }
 
-function periodStart(period=state.period, now=new Date()){
-  const d=new Date(now);
-  if(period==='day'){ d.setHours(0,0,0,0); return d; }
-  if(period==='week'){ d.setDate(d.getDate()-6); d.setHours(0,0,0,0); return d; }
-  if(period==='month'){ d.setDate(1); d.setHours(0,0,0,0); return d; }
-  d.setMonth(0,1); d.setHours(0,0,0,0); return d;
+function periodRange(period=state.period,offset=state.periodOffset,now=new Date()){
+  const endNow=new Date(now);
+  if(period==='history') return {start:new Date(0),end:endNow,label:'Todo el historial guardado'};
+  if(period==='day'){
+    const start=new Date(now); start.setDate(start.getDate()+offset); start.setHours(0,0,0,0);
+    const end=new Date(start); end.setHours(23,59,59,999);
+    return {start,end,label:start.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})};
+  }
+  if(period==='week'){
+    const end=new Date(now); end.setDate(end.getDate()+offset*7); end.setHours(23,59,59,999);
+    const start=new Date(end); start.setDate(start.getDate()-6); start.setHours(0,0,0,0);
+    return {start,end,label:start.toLocaleDateString('es-CL',{day:'numeric',month:'short'})+' — '+end.toLocaleDateString('es-CL',{day:'numeric',month:'short',year:'numeric'})};
+  }
+  if(period==='month'){
+    const start=new Date(now.getFullYear(),now.getMonth()+offset,1,0,0,0,0);
+    const end=new Date(now.getFullYear(),now.getMonth()+offset+1,0,23,59,59,999);
+    return {start,end,label:start.toLocaleDateString('es-CL',{month:'long',year:'numeric'})};
+  }
+  const start=new Date(now.getFullYear()+offset,0,1,0,0,0,0);
+  const end=new Date(now.getFullYear()+offset,11,31,23,59,59,999);
+  return {start,end,label:String(start.getFullYear())};
 }
+function periodStart(period=state.period,now=new Date()){return periodRange(period,state.periodOffset,now).start;}
 function inPeriod(value,period=state.period){
   if(!value)return false;
-  const d=new Date(value);
-  return !Number.isNaN(d.getTime()) && d>=periodStart(period) && d<=new Date();
+  const d=new Date(value); if(Number.isNaN(d.getTime())) return false;
+  const range=periodRange(period,state.periodOffset,new Date());
+  return d>=range.start && d<=range.end;
 }
 function periodControls(){
-  const labels={day:'Día',week:'Semana',month:'Mes',year:'Año'};
-  return '<div class="period-bar"><span>PERIODO</span>'+Object.entries(labels).map(([id,label])=>'<button data-period="'+id+'" class="'+(state.period===id?'active':'')+'">'+label+'</button>').join('')+'<small>Filtra por fecha de publicación o actividad</small></div>';
+  const labels={day:'Día',week:'Semana',month:'Mes',year:'Año',history:'Histórico'};
+  const range=periodRange();
+  const canNext=state.period!=='history' && state.periodOffset<0;
+  return '<div class="period-bar">'+
+    '<span>PERIODO</span>'+
+    Object.entries(labels).map(([id,label])=>'<button data-period="'+id+'" class="'+(state.period===id?'active':'')+'">'+label+'</button>').join('')+
+    '<div class="period-nav">'+
+      (state.period!=='history'?'<button data-period-shift="-1" aria-label="Periodo anterior">←</button><b>'+safe(range.label)+'</b><button data-period-shift="1" '+(canNext?'':'disabled')+' aria-label="Periodo siguiente">→</button>':'<b>'+safe(range.label)+'</b>')+
+      (state.periodOffset!==0?'<button data-period-now="1">Hoy</button>':'')+
+    '</div>'+
+    '<small>La información viene de memoria persistente, no solo de la última sincronización.</small>'+
+  '</div>';
 }
 function compactNumber(value){
   const n=Number(value);
@@ -279,6 +337,8 @@ function compactNumber(value){
 }
 function numberOf(value){const n=Number(value);return Number.isFinite(n)?n:0;}
 function contentRows(){
+  const persisted=(state.persistentPosts||[]).filter(x=>!state.activeAccount||x.account_id===state.activeAccount.id);
+  if(persisted.length) return persisted;
   const snap=snapshotFor('content');
   const rows=snap?.payload?.posts||snap?.payload?.data||[];
   return Array.isArray(rows)?rows:[];
@@ -288,14 +348,14 @@ function rawPostMetrics(p={}){
 }
 function normalizePost(p={}){
   const m=rawPostMetrics(p);
-  const id=String(p._id||p.id||p.platformPostId||p.platforms?.[0]?.platformPostId||'');
+  const id=String(p.external_post_id||p.platform_post_id||p._id||p.id||p.platformPostId||p.platforms?.[0]?.platformPostId||'');
   return {
     raw:p,id,
     text:p.content||p.message||p.caption||p.text||'Publicación sin texto',
-    date:p.publishedAt||p.createdTime||p.createdAt||p.scheduledFor||null,
-    mediaType:String(p.mediaProductType||p.mediaType||p.type||state.activeAccount?.platform||'post').toUpperCase(),
-    image:p.thumbnailUrl||p.thumbnail||p.picture||p.mediaItems?.[0]?.thumbnail||null,
-    url:p.platformPostUrl||p.permalink||p.platforms?.[0]?.platformPostUrl||null,
+    date:p.published_at||p.publishedAt||p.createdTime||p.createdAt||p.scheduled_for||p.scheduledFor||null,
+    mediaType:String(p.media_type||p.mediaProductType||p.mediaType||p.type||state.activeAccount?.platform||'post').toUpperCase(),
+    image:p.thumbnail_url||p.thumbnailUrl||p.thumbnail||p.picture||p.mediaItems?.[0]?.thumbnail||null,
+    url:p.post_url||p.platformPostUrl||p.permalink||p.platforms?.[0]?.platformPostUrl||null,
     likes:numberOf(m.likes??p.likeCount??p.likes),
     comments:numberOf(m.comments??p.commentCount??p.comments),
     shares:numberOf(m.shares??p.shareCount??p.shares),
@@ -338,6 +398,19 @@ function postAdvice(post,pool=filteredPosts()){
   return ideas.slice(0,3);
 }
 function conversationRows(){
+  const persisted=(state.persistentConversations||[]).filter(x=>!state.activeAccount||x.account_id===state.activeAccount.id);
+  if(persisted.length) return persisted.map(c=>({
+    ...c,
+    id:c.external_conversation_id,
+    participantId:c.participant_id,
+    participantName:c.participant_name,
+    participantUsername:c.participant_username,
+    participantPicture:c.participant_picture,
+    url:c.platform_url,
+    unreadCount:c.unread_count,
+    lastMessage:c.last_message,
+    updatedTime:c.last_message_at
+  }));
   const snap=snapshotFor('inbox');
   const rows=snap?.payload?.data||snap?.payload?.conversations||[];
   return Array.isArray(rows)?rows:[];
@@ -571,7 +644,7 @@ function homeSection(){
   const inboxSnap=account?snapshotFor('inbox',account.id):null;
   const posts=filteredPosts();
   const conversations=conversationRows().filter(c=>inPeriod(conversationDate(c)));
-  const unread=conversations.filter(c=>Number(c.unreadCount||0)>0);
+  const unread=state.canManage?conversations.filter(c=>Number(c.unreadCount||0)>0):[];
   const reach=posts.reduce((a,p)=>a+p.reach,0);
   const interactions=posts.reduce((a,p)=>a+postEngagement(p),0);
   const best=[...posts].sort((a,b)=>(b.engagementRate-a.engagementRate)||(b.reach-a.reach))[0]||null;
@@ -597,7 +670,7 @@ function homeSection(){
       <article><strong>${posts.length}</strong><span>Publicaciones del periodo</span></article>
       <article><strong>${compactNumber(reach)}</strong><span>Alcance medido</span></article>
       <article><strong>${compactNumber(interactions)}</strong><span>Interacciones</span></article>
-      <article><strong>${unread.length}</strong><span>Conversaciones por responder</span></article>
+      <article><strong>${state.canManage?unread.length:'—'}</strong><span>${state.canManage?'Conversaciones por responder':'Inbox privado'}</span></article>
     </section>
     <div class="home-grid intelligence-home">
       <section class="panel span2">
@@ -692,6 +765,7 @@ function emptyMemory(title,text){
 
 function inboxSection(){
   if(!state.activeAccount) return noAccounts('Conversaciones');
+  if(!state.canManage) return '<section class="section-heading compact"><div><span class="eyebrow">INBOX / '+safe(state.activeAccount.platform.toUpperCase())+'</span><h1>Conversaciones</h1><p>El contenido del Inbox es privado. La memoria existe y se mantiene en LINK RRSS, pero debes entrar en modo Administración para leer, clasificar y responder mensajes.</p></div></section><section class="panel private-panel"><span class="eyebrow">MEMORIA PRIVADA</span><h2>Las conversaciones están protegidas.</h2><p>Las publicaciones y analíticas públicas sí permanecen visibles. Los mensajes directos solo se muestran a miembros LINK autenticados.</p><button class="primary" id="admin-inbox-access">Administrar Inbox</button></section>';
   const snap=snapshotFor('inbox');
   if(!snap) return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+emptyMemory('Preparando Inbox','LINK RRSS está construyendo la primera memoria de esta cuenta.');
   if(snap.status==='blocked'||snap.status==='error') return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+issuePanel('Inbox no disponible',snap);
@@ -1004,7 +1078,16 @@ function bind(){
   document.querySelectorAll('[data-source-sync]').forEach(btn=>btn.onclick=()=>syncSource(btn.dataset.sourceSync));
   document.querySelectorAll('[data-source-connect]').forEach(btn=>btn.onclick=()=>openNetworkModal(btn.dataset.sourceConnect));
 
-  document.querySelectorAll('[data-period]').forEach(btn=>btn.onclick=()=>{state.period=btn.dataset.period;renderApp();});
+  document.querySelectorAll('[data-period]').forEach(btn=>btn.onclick=()=>{
+    state.period=btn.dataset.period;state.periodOffset=0;renderApp();
+    if(state.period==='history') loadHistoryIfNeeded();
+  });
+  document.querySelectorAll('[data-period-shift]').forEach(btn=>btn.onclick=()=>{
+    const delta=Number(btn.dataset.periodShift||0);
+    state.periodOffset=Math.min(0,state.periodOffset+delta);
+    renderApp();
+  });
+  document.querySelectorAll('[data-period-now]').forEach(btn=>btn.onclick=()=>{state.periodOffset=0;renderApp();});
   document.querySelectorAll('[data-post-open]').forEach(el=>{
     el.onclick=()=>openPostDetail(el.dataset.postOpen);
     el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPostDetail(el.dataset.postOpen);}};
@@ -1027,6 +1110,23 @@ function bind(){
   $('#load-automations')?.addEventListener('click',loadAutomations);
 }
 
+
+async function loadHistoryIfNeeded(){
+  if(!state.canManage||!state.activeAccount||!state.business)return;
+  const memory=(state.accountMemory||[]).find(x=>x.account_id===state.activeAccount.id);
+  if(memory?.history_backfilled_at||state.historyBackfillRequested.has(state.activeAccount.id))return;
+  const source=sourceForActiveAccount(); if(!source)return;
+  state.historyBackfillRequested.add(state.activeAccount.id);
+  toast('Recuperando historial anterior desde Zernio…');
+  try{
+    await invokeZernio({action:'history.backfill',source_id:source.id,account_id:state.activeAccount.id,months:12});
+    await loadBusiness({restore:false});
+    toast('Historial persistente actualizado.');
+  }catch(e){
+    state.historyBackfillRequested.delete(state.activeAccount.id);
+    toast('No se pudo completar todo el historial: '+(e.message||String(e)),true);
+  }
+}
 
 async function loadCurrentSection(){
   if(!state.canManage||!state.business||!state.sources.length)return;
