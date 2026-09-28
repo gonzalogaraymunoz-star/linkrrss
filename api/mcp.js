@@ -109,7 +109,7 @@ export default async function handler(req, res) {
   try { db = await authenticate(req); }
   catch { db = null; }
   if (!db) {
-    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadata}"`);
+    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadata}", scope="email"`);
     return send(res, 401, { error: 'LINK WORLD membership and OAuth sign-in required.' });
   }
   let body;

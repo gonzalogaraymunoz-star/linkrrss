@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f7f7f5" />
+  <title>Autorizar ChatGPT · LINK RRSS</title>
+</head>
+<body>
+  <main class="shell">
+    <section class="card">
+      <div class="mark">L</div>
+      <span class="eyebrow">LINK WORLD / ACCESO</span>
+      <h1>Autorizar herramienta</h1>
+      <p id="intro">Verificando la solicitud…</p>
+      <div id="message" role="status" aria-live="polite"></div>
+      <form id="login" hidden>
+        <label>Correo electrónico<input id="email" type="email" autocomplete="username" required /></label>
+        <label>Contraseña<input id="password" type="password" autocomplete="current-password" required /></label>
+        <button type="submit">Entrar a LINK</button>
+      </form>
+      <section id="consent" hidden>
+        <dl>
+          <div><dt>Aplicación</dt><dd id="client"></dd></div>
+          <div><dt>Permisos solicitados</dt><dd id="scopes"></dd></div>
+          <div><dt>Destino</dt><dd id="destination"></dd></div>
+        </dl>
+        <p class="scope">Esta primera herramienta consulta informes RRSS. No publica contenido ni comparte el texto de mensajes privados con ChatGPT.</p>
+        <div class="actions">
+          <button id="approve" type="button">Autorizar</button>
+          <button id="deny" type="button" class="secondary">Rechazar</button>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/src/oauth-consent.js"></script>
+</body>
+</html>

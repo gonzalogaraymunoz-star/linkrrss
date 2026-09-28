@@ -14,6 +14,6 @@ export default function handler(req, res) {
   return res.end(JSON.stringify({
     resource: `${mcpOrigin()}/mcp`,
     authorization_servers: [`${SUPABASE_URL}/auth/v1`],
-    scopes_supported: ['openid', 'profile', 'email', 'offline_access']
+    scopes_supported: ['email']
   }));
 }

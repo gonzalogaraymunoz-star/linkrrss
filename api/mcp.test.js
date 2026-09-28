@@ -27,4 +27,5 @@ test('OAuth protected resource metadata identifies the LINK issuer', () => {
   assert.equal(res.statusCode, 200);
   assert.equal(body.resource, 'https://linkrrss.vercel.app/mcp');
   assert.deepEqual(body.authorization_servers, ['https://zgbnjlrxzvzpigmwidsp.supabase.co/auth/v1']);
+  assert.deepEqual(body.scopes_supported, ['email']);
 });
