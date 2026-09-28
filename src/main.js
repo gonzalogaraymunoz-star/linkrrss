@@ -695,22 +695,73 @@ function inboxSection(){
     </div>`;
 }
 
+
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
   const snap=snapshotFor('content');
   if(snap?.status==='blocked'||snap?.status==='error') return `<section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1></div></section>${issuePanel('Contenido no disponible',snap)}`;
-  const rows=snap?.payload?.posts||snap?.payload?.data||[];
-  const body=Array.isArray(rows)&&rows.length?rows.map(p=>{
-    const text=p.message||p.content||p.caption||p.text||'Publicación sin texto';
-    const when=p.createdTime||p.publishedAt||p.createdAt||p.scheduledFor;
-    const image=p.picture||p.thumbnail||p.mediaUrl||null;
-    const likes=p.likeCount??p.likes??null, comments=p.commentCount??p.comments??null, shares=p.shareCount??p.shares??null;
-    return `<article class="post-card rich-post">${image?'<div class="post-media"><img src="'+safe(image)+'" alt=""></div>':''}<div class="post-meta"><span>${safe((p.mediaType||state.activeAccount.platform||'post').toUpperCase())}</span><small>${safe(fmtDate(when))}</small></div><p>${safe(String(text).slice(0,520))}</p><div class="post-metrics">${likes!==null?'<span>♥ '+safe(likes)+'</span>':''}${comments!==null?'<span>◌ '+safe(comments)+'</span>':''}${shares!==null?'<span>↗ '+safe(shares)+'</span>':''}</div>${p.permalink?'<a href="'+safe(p.permalink)+'" target="_blank" rel="noreferrer">Ver publicación ↗</a>':''}</article>`;
-  }).join(''):emptyMemory('Sin publicaciones en memoria','La sincronización automática todavía no tiene publicaciones para mostrar.');
+  const rows=filteredPosts();
+  const all=contentRows().map(normalizePost);
+  const erMedian=median(all.map(p=>p.engagementRate).filter(x=>x>0));
+  const body=rows.length?rows.map(p=>{
+    const engagement=postEngagement(p);
+    const benchmark=p.engagementRate>0&&erMedian>0?(p.engagementRate>=erMedian?'Sobre mediana':'Bajo mediana'):'Sin base';
+    return `<article class="post-card rich-post post-open" data-post-open="${safe(p.id)}" tabindex="0">
+      ${p.image?'<div class="post-media"><img src="'+safe(p.image)+'" alt=""></div>':''}
+      <div class="post-card-body">
+        <div class="post-meta"><span>${safe(p.mediaType)}</span><small>${safe(fmtDate(p.date))}</small></div>
+        <p>${safe(String(p.text).slice(0,360))}</p>
+        <div class="post-kpis">
+          <span><b>${compactNumber(p.reach)}</b> alcance</span>
+          <span><b>${compactNumber(p.views||p.impressions)}</b> vistas</span>
+          <span><b>${compactNumber(engagement)}</b> interacciones</span>
+          <span><b>${p.engagementRate?p.engagementRate.toFixed(2)+'%':'—'}</b> engagement</span>
+        </div>
+        <div class="post-foot"><span class="signal-chip">${safe(benchmark)}</span><strong>Abrir ficha →</strong></div>
+      </div>
+    </article>`;
+  }).join(''):emptyMemory('Sin publicaciones en este periodo','Cambia el filtro o sincroniza la cuenta para ampliar la memoria.');
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Contenido persistido en Supabase y refrescado automáticamente desde Zernio.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
     <div id="content-live" class="content-grid">${body}</div>`;
 }
+
+function openPostDetail(postId){
+  const post=contentRows().map(normalizePost).find(p=>p.id===String(postId));
+  if(!post)return;
+  const ideas=postAdvice(post,contentRows().map(normalizePost));
+  const watch=post.avgWatchMs?Math.round(post.avgWatchMs/100)/10:null;
+  const interactions=postEngagement(post);
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal post-detail-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <div class="post-detail-top">
+          ${post.image?'<div class="post-detail-image"><img src="'+safe(post.image)+'" alt=""></div>':''}
+          <div><span class="eyebrow">FICHA / ${safe(post.mediaType)}</span><h2>Qué nos enseñó esta publicación</h2><p>${safe(String(post.text).slice(0,420))}</p><small>${safe(fmtDate(post.date))}</small></div>
+        </div>
+        <div class="post-detail-kpis">
+          <div><strong>${compactNumber(post.reach)}</strong><span>Alcance</span></div>
+          <div><strong>${compactNumber(post.views||post.impressions)}</strong><span>Vistas</span></div>
+          <div><strong>${compactNumber(interactions)}</strong><span>Interacciones</span></div>
+          <div><strong>${post.engagementRate?post.engagementRate.toFixed(2)+'%':'—'}</strong><span>Engagement</span></div>
+          <div><strong>${post.skipRate?post.skipRate.toFixed(1)+'%':'—'}</strong><span>Skip reel</span></div>
+          <div><strong>${watch!==null?watch+' s':'—'}</strong><span>Watch medio</span></div>
+          <div><strong>${compactNumber(post.saves)}</strong><span>Guardados</span></div>
+          <div><strong>${compactNumber(post.shares)}</strong><span>Compartidos</span></div>
+        </div>
+        <div class="post-detail-grid">
+          <section><span class="eyebrow">INTERACCIÓN</span><div class="interaction-split"><span>♥ ${post.likes} likes</span><span>◌ ${post.comments} comentarios</span><span>↗ ${post.shares} compartidos</span><span>▣ ${post.saves} guardados</span></div></section>
+          <section><span class="eyebrow">SIGUIENTE APRENDIZAJE</span><div class="advice-stack">${ideas.map(i=>'<article><strong>'+safe(i.title)+'</strong><p>'+safe(i.text)+'</p></article>').join('')}</div></section>
+        </div>
+        <div class="post-detail-actions">${post.url?'<a href="'+safe(post.url)+'" target="_blank" rel="noreferrer">Abrir publicación ↗</a>':''}<button data-copy-post-insight="${safe(ideas.map(i=>i.title+': '+i.text).join(' | '))}">Copiar aprendizaje</button></div>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+  $('[data-copy-post-insight]')?.addEventListener('click',async e=>{await navigator.clipboard?.writeText(e.currentTarget.dataset.copyPostInsight||'');toast('Aprendizaje copiado.');});
+}
+
 function analyticsSection(){
   if(!state.activeAccount) return noAccounts('Analytics');
   const snap=snapshotFor('analytics');
