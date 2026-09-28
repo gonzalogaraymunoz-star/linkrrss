@@ -544,54 +544,65 @@ function emptyMission(){
     </section>`;
 }
 
+
 function homeSection(){
   if(!state.profiles.length && !state.sources.length) return emptyMission();
   const account=state.activeAccount||state.accounts[0]||null;
-  const content=account?snapshotFor('content',account.id):null;
-  const analytics=account?snapshotFor('analytics',account.id):null;
-  const inbox=account?snapshotFor('inbox',account.id):null;
   const caps=account?snapshotFor('capabilities',account.id):null;
-  const posts=content?.payload?.posts||content?.payload?.data||[];
-  const aroot=analytics?.payload||{};
-  const overview=aroot.overview||{};
-  const inboxRows=inbox?.payload?.data||inbox?.payload?.conversations||[];
-  const inboxLabel=inbox?.status==='blocked'?'Bloqueado':Array.isArray(inboxRows)?inboxRows.length:'—';
+  const contentSnap=account?snapshotFor('content',account.id):null;
+  const inboxSnap=account?snapshotFor('inbox',account.id):null;
+  const posts=filteredPosts();
+  const conversations=conversationRows().filter(c=>inPeriod(conversationDate(c)));
+  const unread=conversations.filter(c=>Number(c.unreadCount||0)>0);
+  const reach=posts.reduce((a,p)=>a+p.reach,0);
+  const interactions=posts.reduce((a,p)=>a+postEngagement(p),0);
+  const best=[...posts].sort((a,b)=>(b.engagementRate-a.engagementRate)||(b.reach-a.reach))[0]||null;
+  const highSkip=posts.filter(p=>p.skipRate>=60).length;
   const healthy=state.accounts.filter(x=>x.status==='connected').length;
   const last=state.workspace?.last_full_sync_at;
-
+  const actions=[];
+  if(unread.length) actions.push({tone:'urgent',title:'Responder '+unread.length+' conversación(es)',text:'Hay mensajes sin leer. Prioriza preguntas de compra, reserva, horario o visita.',jump:'inbox'});
+  if(best) actions.push({tone:'positive',title:'Repetir lo que funcionó',text:(best.mediaType||'POST')+' · '+(best.engagementRate?best.engagementRate.toFixed(2)+'% ER':'alcance '+compactNumber(best.reach))+'. Abre la ficha para entender la señal.',post:best.id});
+  if(highSkip) actions.push({tone:'warn',title:'Mejorar el inicio de '+highSkip+' reel(s)',text:'Tienen skip de 60% o más. Prueba una promesa visible antes del segundo 2.',jump:'analytics'});
+  if(!actions.length) actions.push({tone:'positive',title:'Sin urgencias dominantes',text:'Revisa Analytics para elegir el próximo experimento a partir del contenido medido.',jump:'analytics'});
+  const recent=socialActivityRows().slice(0,5);
   return `
     <section class="hero rrss-command-hero">
       <div>
         <span class="eyebrow">APARATO RRSS / ${safe(state.business.name.toUpperCase())}</span>
-        <h1>La puerta social de ${safe(state.business.name)}.</h1>
-        <p>LINK RRSS recuerda lo último que sabe, abre con contexto y refresca Zernio en segundo plano.</p>
+        <h1>Qué necesita atención ahora.</h1>
+        <p>LINK RRSS cruza contenido, conversación e interacción del periodo seleccionado para convertir la red social en trabajo concreto.</p>
       </div>
       <div class="memory-orb ${state.syncing?'syncing':''}"><b>${safe(syncStateLabel())}</b><span>${safe(ago(last))}</span></div>
     </section>
-    <section class="metric-row">
-      <article><strong>${state.accounts.length}</strong><span>Cuentas conectadas</span></article>
-      <article><strong>${overview.totalPosts??(Array.isArray(posts)?posts.length:'—')}</strong><span>Posts detectados</span></article>
-      <article><strong>${safe(inboxLabel)}</strong><span>Conversaciones</span></article>
-      <article><strong>${healthy}/${state.accounts.length||0}</strong><span>Salud de cuentas</span></article>
+    <section class="metric-row home-metrics">
+      <article><strong>${posts.length}</strong><span>Publicaciones del periodo</span></article>
+      <article><strong>${compactNumber(reach)}</strong><span>Alcance medido</span></article>
+      <article><strong>${compactNumber(interactions)}</strong><span>Interacciones</span></article>
+      <article><strong>${unread.length}</strong><span>Conversaciones por responder</span></article>
     </section>
-    <div class="home-grid">
+    <div class="home-grid intelligence-home">
       <section class="panel span2">
-        <div class="panel-head"><div><span class="eyebrow">MEMORIA RECIENTE</span><h2>Qué está pasando</h2></div><span class="freshness">${safe(content?ago(content.fetched_at):'Construyendo')}</span></div>
-        <div class="activity-feed">
-          ${Array.isArray(posts)&&posts.length?posts.slice(0,5).map(p=>`<div class="activity-row"><span class="activity-type">${safe(p.mediaType||'Post')}</span><div><strong>${safe((p.message||p.content||p.caption||'Publicación sin texto').slice(0,120))}</strong><small>${safe(fmtDate(p.createdTime||p.publishedAt||p.createdAt))} · ♥ ${safe(p.likeCount??'—')} · ◌ ${safe(p.commentCount??'—')}</small></div></div>`).join(''):emptyMemory('Primera memoria en construcción','LINK RRSS está sincronizando la actividad de esta cuenta.')}
-        </div>
+        <div class="panel-head"><div><span class="eyebrow">PRIORIDAD</span><h2>Siguientes movimientos</h2></div><span class="freshness">${safe(contentSnap?ago(contentSnap.fetched_at):'Construyendo')}</span></div>
+        <div class="next-moves">${actions.map(a=>'<button class="'+safe(a.tone)+'" '+(a.post?'data-post-open="'+safe(a.post)+'"':'data-section-jump="'+safe(a.jump)+'"')+'><span></span><div><strong>'+safe(a.title)+'</strong><p>'+safe(a.text)+'</p></div><b>→</b></button>').join('')}</div>
       </section>
       <section class="panel apparatus-health">
         <div class="panel-head"><div><span class="eyebrow">CAPACIDADES</span><h2>Estado del aparato</h2></div><button data-section-jump="connections">Gestionar</button></div>
         <div class="capability-list">
           <div><span class="status-dot ${account?.can_post===false?'warn':'ok'}"></span><b>Publicación</b><small>${account?.can_post===false?'Limitada':'Disponible'}</small></div>
           <div><span class="status-dot ${account?.can_analytics===false?'warn':'ok'}"></span><b>Analytics</b><small>${account?.can_analytics===false?'Limitado':'Disponible'}</small></div>
-          <div><span class="status-dot ${caps?.payload?.inbox?'ok':inbox?.status==='blocked'?'warn':'pending'}"></span><b>Inbox</b><small>${inbox?.status==='blocked'?'Falta '+safe(snapshotError(inbox)?.required_group||'permiso'):caps?.payload?.inbox?'Disponible':'Pendiente'}</small></div>
+          <div><span class="status-dot ${caps?.payload?.inbox?'ok':inboxSnap?.status==='blocked'?'warn':'pending'}"></span><b>Inbox</b><small>${inboxSnap?.status==='blocked'?'Revisar permiso':caps?.payload?.inbox?'Disponible':'Pendiente'}</small></div>
           <div><span class="status-dot ${state.sources[0]?.status==='healthy'?'ok':'warn'}"></span><b>Zernio</b><small>${safe(state.sources[0]?.status||'sin fuente')}</small></div>
+          <div><span class="status-dot ${healthy===state.accounts.length?'ok':'warn'}"></span><b>Cuentas</b><small>${healthy}/${state.accounts.length||0} conectadas</small></div>
         </div>
+      </section>
+      <section class="panel span3">
+        <div class="panel-head"><div><span class="eyebrow">SEÑALES RECIENTES</span><h2>Lo último que ocurrió en las redes</h2></div><button data-section-jump="activity">Ver actividad</button></div>
+        <div class="home-social-feed">${recent.length?recent.map(x=>{const p=x.payload||{};const who=p.participant_name||p.author_name||p.author_username||(x.activity_type==='publication'?'Publicación':'Interacción');const text=p.message||p.text||('♥ '+numberOf(p.metrics?.likes)+' · ◌ '+numberOf(p.metrics?.comments)+' · ↗ '+numberOf(p.metrics?.shares));return '<div><span class="event-dot '+safe(x.activity_type)+'"></span><strong>'+safe(who)+'</strong><p>'+safe(String(text||'Actividad').slice(0,150))+'</p><small>'+safe(ago(x.occurred_at))+'</small></div>'}).join(''):'<p class="muted">Sin señales en este periodo.</p>'}</div>
       </section>
     </div>`;
 }
+
 
 function connectionsSection(){
   const profile=state.profiles[0]||null;
