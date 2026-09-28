@@ -68,3 +68,7 @@
 .user-dot.public{background:#8c8c89}
 @media(max-width:860px){.z-connect-shell{grid-template-columns:1fr}.z-profile-column{position:static}.platform-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.platform-grid{grid-template-columns:1fr}.z-source-top{grid-template-columns:38px 1fr}.z-source-top .health-pill{grid-column:1/-1;justify-self:start}.z-account-row{grid-template-columns:32px 1fr}.z-account-cap{grid-column:2;justify-self:start}.z-stepbar{overflow:auto}}
+
+.auth-secondary{width:100%;margin-top:8px;border:0;background:transparent;color:#666;font-size:9px;text-decoration:underline;text-underline-offset:2px;padding:7px}
+.auth-secondary:hover{color:#222}
+.recovery-lock{background:rgba(0,0,0,.42)}
