@@ -7,6 +7,15 @@ const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
+db.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY'){
+    const u=new URL(location.href);
+    u.searchParams.set('recovery','1');
+    history.replaceState({},'',u);
+    setTimeout(()=>handleRecoveryFlow(),0);
+  }
+});
+
 const $ = (s, r=document) => r.querySelector(s);
 const safe = (v='') => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDate = v => {
@@ -519,7 +528,9 @@ async function openPasswordRecoveryModal(){
 
 async function handleRecoveryFlow(){
   const params=new URLSearchParams(location.search);
-  if(params.get('recovery')!=='1') return false;
+  const hash=new URLSearchParams(location.hash.replace(/^#/,''));
+  const isRecovery=params.get('recovery')==='1' || hash.get('type')==='recovery';
+  if(!isRecovery) return false;
 
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop recovery-lock">
