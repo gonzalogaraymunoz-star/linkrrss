@@ -58,7 +58,9 @@ const state = {
   socialActivity: [],
   panelRefreshAt: new Map(),
   activityType: 'all',
-  activityCommentsLoadedKey: null
+  activityCommentsLoadedKey: null,
+  analyticsTab: 'overview',
+  analyticsSort: 'recent'
 };
 
 const nav = [
@@ -1053,57 +1055,58 @@ function openMetricMethodology(){
   $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
 }
 
+function analyticsSeries(posts=[]){
+  const days=new Map();
+  for(const p of posts){
+    if(!p.date)continue;
+    const d=new Date(p.date); if(Number.isNaN(d.getTime()))continue;
+    const key=d.toISOString().slice(0,10);
+    days.set(key,(days.get(key)||0)+numberOf(p.views||p.impressions));
+  }
+  return [...days.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+}
+function instagramLineChart(series=[]){
+  if(!series.length)return '<div class="ig-chart-empty">Sin datos suficientes para dibujar la evolución.</div>';
+  const w=720,h=250,pad=24,max=Math.max(...series.map(x=>x[1]),1);
+  const pts=series.map((x,i)=>[(pad+(i*(w-pad*2)/Math.max(1,series.length-1))),h-pad-(x[1]/max)*(h-pad*2)]);
+  const poly=pts.map(x=>x.join(',')).join(' ');
+  return '<div class="ig-chart"><svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Evolución de reproducciones"><line x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'"></line><polyline points="'+poly+'"></polyline>'+pts.map((p,i)=>'<circle data-chart-point="'+i+'" cx="'+p[0]+'" cy="'+p[1]+'" r="10"><title>'+safe(series[i][0])+' · '+compactNumber(series[i][1])+'</title></circle>').join('')+'</svg><div class="ig-chart-labels"><span>'+safe(series[0][0].slice(5))+'</span><span>'+safe(series[Math.floor(series.length/2)][0].slice(5))+'</span><span>'+safe(series[series.length-1][0].slice(5))+'</span></div></div>';
+}
+function analyticsOverview(posts,snap){
+  const views=posts.reduce((a,p)=>a+numberOf(p.views||p.impressions),0);
+  const reach=posts.reduce((a,p)=>a+numberOf(p.reach),0);
+  const audience=reach||0;
+  const sorted=[...posts].sort((a,b)=>state.analyticsSort==='views'?(b.views||b.impressions)-(a.views||a.impressions):new Date(b.date||0)-new Date(a.date||0));
+  const ranked=[...posts].sort((a,b)=>(b.views||b.impressions)-(a.views||a.impressions));
+  return '<section class="ig-account"><div class="ig-section-head"><h2>Cuenta <span title="Información">ⓘ</span></h2><span>'+safe(periodRange().label)+'</span></div>'+
+    '<div class="ig-kpi-scroll"><button class="active"><small>Reproducciones de reels</small><strong>'+compactNumber(views)+'</strong></button><button><small>Espectadores</small><strong>'+compactNumber(audience)+'</strong></button><button><small>Alcance</small><strong>'+compactNumber(reach)+'</strong></button></div>'+
+    instagramLineChart(analyticsSeries(posts))+'</section>'+
+    '<section class="ig-reels"><div class="ig-section-head"><h2>Reels <span>ⓘ</span></h2><span>Todas⌄</span></div><div class="ig-sort"><button data-analytics-sort="recent" class="'+(state.analyticsSort==='recent'?'active':'')+'">Más recientes</button><button data-analytics-sort="views" class="'+(state.analyticsSort==='views'?'active':'')+'">Más visualizaciones</button></div>'+
+    '<div class="ig-reel-list">'+(sorted.length?sorted.slice(0,10).map(p=>{const pos=ranked.findIndex(x=>x.id===p.id)+1;return '<button class="ig-reel-row" data-post-open="'+safe(p.id)+'">'+(p.image?'<img src="'+safe(p.image)+'" alt="">':'<span class="ig-thumb"></span>')+'<div><strong>'+safe(String(p.text).slice(0,70))+'</strong><small>'+safe(ago(p.date))+'</small><em>♡ '+p.likes+'　◌ '+p.comments+'　↗ '+p.shares+'</em></div><aside><small>'+pos+' de '+posts.length+'</small><strong>'+compactNumber(p.views||p.impressions)+'</strong><span>Reproducciones</span></aside></button>';}).join(''):'<p class="ig-empty">Sin publicaciones en este periodo.</p>')+'</div></section>';
+}
+function analyticsAudience(posts,snap){
+  const payload=snap?.payload||{};
+  const followers=numberOf(payload.followers??payload.followersCount??payload.account?.followersCount);
+  const reach=posts.reduce((a,p)=>a+p.reach,0);
+  return '<section class="ig-audience"><div class="ig-section-head"><h2>Seguidores</h2><span>'+safe(periodRange().label)+'</span></div><div class="ig-followers"><strong>'+(followers?compactNumber(followers):'—')+'</strong><small>'+(followers?'Seguidores actuales':'La fuente no entregó el total de seguidores')+'</small></div>'+instagramLineChart(analyticsSeries(posts.map(p=>({...p,views:p.reach}))))+
+    '<div class="ig-audience-block"><h2>Género <span>ⓘ</span></h2><p class="ig-data-note">Se mostrará aquí cuando Instagram/Zernio entregue la distribución de audiencia. LINK no inventa porcentajes.</p></div>'+
+    '<div class="ig-audience-block"><h2>Rango de edad <span>ⓘ</span></h2><p class="ig-data-note">La estructura queda preparada para 13–17, 18–24, 25–34, 35–44, 45–54, 55–64 y 65+.</p></div>'+
+    '<div class="ig-audience-block"><h2>Principales ubicaciones <span>ⓘ</span></h2><div class="ig-toggle"><button class="active">Países</button><button>Ciudades</button></div><p class="ig-data-note">Se mostrará únicamente la geografía que entregue la fuente conectada.</p></div>'+
+    '<div class="ig-audience-block"><h2>Cuándo están más activos los seguidores <span>ⓘ</span></h2><p class="ig-data-note">Los horarios aparecerán cuando estén disponibles en la API.</p></div></section>';
+}
+function analyticsComments(posts){
+  const events=socialActivityRows().filter(x=>x.activity_type==='comment'&&inPeriod(x.occurred_at));
+  return '<section class="ig-comments"><div class="ig-section-head"><h2>Comentarios</h2><span>Todas⌄</span></div><div class="ig-comment-list">'+(events.length?events.map(x=>{const p=x.payload||{};const post=posts.find(z=>z.id===String(p.post_id));return '<article><div class="ig-comment-avatar">'+safe((p.author_name||p.author_username||'?').slice(0,1).toUpperCase())+'</div><div><strong>'+safe(p.author_name||p.author_username||'Usuario')+'</strong><small>'+safe(ago(x.occurred_at))+'</small><p>'+safe(p.text||'Comentario')+'</p></div>'+(post?.image?'<img src="'+safe(post.image)+'" alt="">':'')+'</article>';}).join(''):'<p class="ig-empty">No hay comentarios persistidos en este periodo.</p>')+'</div></section>';
+}
 function analyticsSection(){
   if(!state.activeAccount) return noAccounts('Analytics');
   const snap=snapshotFor('analytics');
   const posts=filteredPosts();
-  const total=(key)=>posts.reduce((a,p)=>a+numberOf(p[key]),0);
-  const interactions=posts.reduce((a,p)=>a+postEngagement(p),0);
-  const reach=total('reach');
-  const views=posts.reduce((a,p)=>a+numberOf(p.views||p.impressions),0);
-  const erValues=posts.map(p=>p.engagementRate).filter(x=>x>0);
-  const avgEr=erValues.length?erValues.reduce((a,b)=>a+b,0)/erValues.length:(reach?interactions/reach*100:0);
-  const skipValues=posts.map(p=>p.skipRate).filter(x=>x>0);
-  const avgSkip=skipValues.length?skipValues.reduce((a,b)=>a+b,0)/skipValues.length:0;
-  const watchValues=posts.map(p=>p.avgWatchMs).filter(x=>x>0);
-  const avgWatch=watchValues.length?(watchValues.reduce((a,b)=>a+b,0)/watchValues.length/1000):0;
-  const best=[...posts].sort((a,b)=>(b.engagementRate-a.engagementRate)||(b.reach-a.reach)).slice(0,6);
-  const formats={};
-  for(const p of posts){const k=p.mediaType||'POST';(formats[k] ||= []).push(p.engagementRate||0);}
-  const formatEntries=Object.entries(formats).map(([k,v])=>[k,v.reduce((a,b)=>a+b,0)/v.length,v.length]).sort((a,b)=>b[1]-a[1]);
-  const signals=[];
-  if(formatEntries[0])signals.push({title:'Formato a profundizar',text:formatEntries[0][0]+' promedia '+formatEntries[0][1].toFixed(2)+'% de engagement en '+formatEntries[0][2]+' pieza(s).'});
-  if(avgSkip)signals.push({title:avgSkip>=60?'Problema de retención':'Retención observable',text:'Skip promedio de reels: '+avgSkip.toFixed(1)+'%. '+(avgSkip>=60?'Prioriza aperturas más rápidas y promesa visible al inicio.':'Mantén los ganchos que reducen el abandono y pruébalos en nuevas piezas.')});
-  const saves=total('saves'),shares=total('shares'),comments=total('comments');
-  signals.push({title:'Tipo de reacción',text:(saves+shares>comments?'Guardados + compartidos ('+(saves+shares)+') superan comentarios ('+comments+'): conviene crear contenido que la gente quiera conservar o enviar.':'Los comentarios tienen peso relativo: abre más conversación y responde rápido para convertirla en relación.')});
-  if(!posts.length)signals.push({title:'Sin muestra',text:'No hay publicaciones dentro del periodo seleccionado. Cambia el filtro para comparar.'});
-  return `
-    <section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1><p>El tablero se construye desde cada publicación, no desde números aislados. Muestra solo lo que la fuente realmente entregó.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Memoria de contenido')}</span></section>
-    <div class="analytics-command">
-      <div class="metric-row analytics-metrics">
-        <article><strong>${posts.length}</strong><span>Publicaciones</span></article>
-        <article><strong>${compactNumber(reach)}</strong><span>Alcance acumulado</span></article>
-        <article><strong>${compactNumber(views)}</strong><span>Vistas / impresiones</span></article>
-        <article><strong>${compactNumber(interactions)}</strong><span>Interacciones</span></article>
-        <article><strong>${avgEr?avgEr.toFixed(2)+'%':'—'}</strong><span>Engagement medio</span></article>
-        <article><strong>${avgSkip?avgSkip.toFixed(1)+'%':'—'}</strong><span>Skip medio reels</span></article>
-        <article><strong>${avgWatch?avgWatch.toFixed(1)+' s':'—'}</strong><span>Watch medio</span></article>
-        <article><strong>${compactNumber(saves+shares)}</strong><span>Guardados + compartidos</span></article>
-      </div>
-      <div class="analytics-grid">
-        <section class="panel">
-          <div class="panel-head"><div><span class="eyebrow">PIEZAS CLAVE</span><h2>Qué contenido está moviendo la cuenta</h2></div></div>
-          <div class="ranked-posts">${best.length?best.map((p,i)=>'<button data-post-open="'+safe(p.id)+'"><span class="rank">'+String(i+1).padStart(2,'0')+'</span><div><strong>'+safe(String(p.text).slice(0,90))+'</strong><small>'+safe(p.mediaType)+' · '+compactNumber(p.reach)+' alcance · '+(p.engagementRate?p.engagementRate.toFixed(2)+'% ER':'ER —')+'</small></div><span>→</span></button>').join(''):'<p class="muted">Sin piezas en el periodo.</p>'}</div>
-        </section>
-        <section class="panel">
-          <div class="panel-head"><div><span class="eyebrow">LECTURA LINK</span><h2>Señales para avanzar</h2></div></div>
-          <div class="insight-grid">${signals.slice(0,3).map(s=>'<article><strong>'+safe(s.title)+'</strong><p>'+safe(s.text)+'</p></article>').join('')}</div>
-        </section>
-      </div>
-      ${metricIndexMarkup()}
-    </div>`;
+  const tab=state.analyticsTab||'overview';
+  return '<section class="ig-insights"><header class="ig-title"><div><span class="eyebrow">ANALYTICS / '+safe(state.activeAccount.platform.toUpperCase())+'</span><h1>Estadísticas</h1></div><span class="freshness">'+safe(snap?ago(snap.fetched_at):'Memoria de contenido')+'</span></header>'+
+    '<nav class="ig-tabs"><button data-analytics-tab="overview" class="'+(tab==='overview'?'active':'')+'">Información general</button><button data-analytics-tab="audience" class="'+(tab==='audience'?'active':'')+'">Público</button><button data-analytics-tab="comments" class="'+(tab==='comments'?'active':'')+'">Comentarios</button></nav>'+
+    '<div class="ig-tab-body">'+(tab==='audience'?analyticsAudience(posts,snap):tab==='comments'?analyticsComments(posts):analyticsOverview(posts,snap))+'</div></section>';
 }
-
 
 function automationSuggestions(){
   const suggestions=[];
@@ -1287,6 +1290,8 @@ function bind(){
     const [y,m]=btn.dataset.calendarMonthJump.split('-').map(Number);jumpToCalendarMonth(m-1,y);
   });
   $('#metric-methodology')?.addEventListener('click',openMetricMethodology);
+  document.querySelectorAll('[data-analytics-tab]').forEach(btn=>btn.onclick=()=>{state.analyticsTab=btn.dataset.analyticsTab;renderApp();});
+  document.querySelectorAll('[data-analytics-sort]').forEach(btn=>btn.onclick=()=>{state.analyticsSort=btn.dataset.analyticsSort;renderApp();});
   document.querySelectorAll('[data-conversation]').forEach(btn=>btn.onclick=()=>{
     state.selectedConversationId=btn.dataset.conversation;
     renderApp();
