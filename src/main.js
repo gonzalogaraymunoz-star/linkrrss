@@ -503,9 +503,9 @@ function analyticsSection(){
   const sum=(key)=>Array.isArray(rows)?rows.reduce((a,p)=>a+Number(p?.metrics?.[key]??p?.[key]??0),0):0;
   const metrics=[
     ['Posts',overview.totalPosts??(Array.isArray(rows)?rows.length:'—')],
-    ['Alcance',overview.reach??sum('reach')||'—'],
-    ['Impresiones',overview.impressions??sum('impressions')||'—'],
-    ['Interacciones',overview.engagement??(sum('likes')+sum('comments')+sum('shares')+sum('saves'))||'—']
+    ['Alcance',overview.reach ?? (sum('reach') || '—')],
+    ['Impresiones',overview.impressions ?? (sum('impressions') || '—')],
+    ['Interacciones',overview.engagement ?? ((sum('likes')+sum('comments')+sum('shares')+sum('saves')) || '—')]
   ];
   const top=Array.isArray(rows)?rows.slice(0,5):[];
   return `
