@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck } from 'lucide';
+import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connection.js';
 import './style.css';
 
@@ -65,6 +65,7 @@ const nav = [
   ['home','Inicio',Home],
   ['inbox','Conversaciones',MessageCircle],
   ['content','Contenido',FileText],
+  ['calendar','Calendario',CalendarDays],
   ['analytics','Analytics',ChartNoAxesCombined],
   ['connections','Conexiones',PlugZap],
   ['automations','Automatizaciones',Workflow],
@@ -799,6 +800,150 @@ function inboxSection(){
 }
 
 
+
+function dateKey(value){
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return '';
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+}
+function dateFromKey(key){
+  const [y,m,d]=String(key).split('-').map(Number);
+  return new Date(y,m-1,d,12,0,0,0);
+}
+function monthTitle(d){return d.toLocaleDateString('es-CL',{month:'long',year:'numeric'});}
+function postsByDay(posts){
+  const map=new Map();
+  for(const p of posts){
+    const key=dateKey(p.date);
+    if(!key) continue;
+    if(!map.has(key)) map.set(key,[]);
+    map.get(key).push(p);
+  }
+  for(const list of map.values()) list.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return map;
+}
+function calendarPostChip(p,compact=false){
+  const engagement=postEngagement(p);
+  return '<button class="calendar-post '+(compact?'compact':'')+'" data-post-open="'+safe(p.id)+'" title="'+safe(String(p.text).slice(0,140))+'">'+
+    (p.image?'<span class="calendar-thumb"><img src="'+safe(p.image)+'" alt=""></span>':'<span class="calendar-thumb no-image">'+safe((p.mediaType||'P')[0])+'</span>')+
+    '<span class="calendar-post-copy"><strong>'+safe(String(p.text||'Publicación').slice(0,compact?46:74))+'</strong>'+
+    '<small>'+safe(new Date(p.date).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}))+' · '+compactNumber(p.reach)+' alcance · '+engagement+' int.</small></span>'+
+  '</button>';
+}
+function dayCalendarView(posts){
+  const range=periodRange();
+  const dayPosts=[...posts].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return '<section class="calendar-day-view">'+
+    '<div class="calendar-day-head"><div><span class="eyebrow">AGENDA DEL DÍA</span><h2>'+safe(range.label)+'</h2></div><strong>'+dayPosts.length+' publicación(es)</strong></div>'+
+    '<div class="calendar-timeline">'+
+      (dayPosts.length?dayPosts.map(p=>'<div class="calendar-time-row"><time>'+safe(new Date(p.date).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}))+'</time>'+calendarPostChip(p)+'</div>').join(''):'<div class="calendar-empty-day">No hay publicaciones guardadas para este día.</div>')+
+    '</div></section>';
+}
+function weekCalendarView(posts){
+  const range=periodRange();
+  const byDay=postsByDay(posts);
+  const days=[];
+  const d=new Date(range.start);
+  while(d<=range.end){days.push(new Date(d));d.setDate(d.getDate()+1);}
+  return '<section class="calendar-week-view"><div class="calendar-week-grid">'+days.map(day=>{
+    const key=dateKey(day),list=byDay.get(key)||[];
+    return '<article class="calendar-week-day"><header><span>'+safe(day.toLocaleDateString('es-CL',{weekday:'short'}))+'</span><b>'+day.getDate()+'</b><small>'+list.length+' pub.</small></header><div>'+(list.length?list.map(p=>calendarPostChip(p,true)).join(''):'<p class="calendar-none">Sin publicaciones</p>')+'</div></article>';
+  }).join('')+'</div></section>';
+}
+function monthCalendarView(posts){
+  const range=periodRange();
+  const focus=new Date(range.start);
+  const byDay=postsByDay(posts);
+  const first=new Date(focus.getFullYear(),focus.getMonth(),1);
+  const last=new Date(focus.getFullYear(),focus.getMonth()+1,0);
+  const start=new Date(first);
+  const mondayIndex=(start.getDay()+6)%7;
+  start.setDate(start.getDate()-mondayIndex);
+  const end=new Date(last);
+  const endIndex=(end.getDay()+6)%7;
+  end.setDate(end.getDate()+(6-endIndex));
+  const days=[];
+  const d=new Date(start);
+  while(d<=end){days.push(new Date(d));d.setDate(d.getDate()+1);}
+  const weekNames=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  return '<section class="calendar-month-view">'+
+    '<div class="calendar-weekdays">'+weekNames.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
+    '<div class="calendar-month-grid">'+days.map(day=>{
+      const key=dateKey(day),list=byDay.get(key)||[];
+      const outside=day.getMonth()!==focus.getMonth();
+      const isToday=dateKey(day)===dateKey(new Date());
+      return '<article class="calendar-cell '+(outside?'outside ':'')+(isToday?'today':'')+'">'+
+        '<header><button data-calendar-day="'+key+'">'+day.getDate()+'</button><small>'+list.length+'</small></header>'+
+        '<div class="calendar-cell-posts">'+(list.length?list.slice(0,4).map(p=>calendarPostChip(p,true)).join(''):'')+
+        (list.length>4?'<button class="calendar-more" data-calendar-day="'+key+'">+'+(list.length-4)+' más</button>':'')+
+        '</div></article>';
+    }).join('')+'</div></section>';
+}
+function yearCalendarView(posts){
+  const range=periodRange();
+  const year=range.start.getFullYear();
+  const byDay=postsByDay(posts);
+  const months=[];
+  for(let month=0;month<12;month++){
+    const first=new Date(year,month,1);
+    const daysInMonth=new Date(year,month+1,0).getDate();
+    const leading=(first.getDay()+6)%7;
+    const cells=Array(leading).fill(null);
+    for(let day=1;day<=daysInMonth;day++) cells.push(new Date(year,month,day));
+    const monthPosts=posts.filter(p=>{const d=new Date(p.date);return d.getFullYear()===year&&d.getMonth()===month;});
+    months.push('<button class="year-month-card" data-calendar-month="'+month+'">'+
+      '<header><strong>'+safe(first.toLocaleDateString('es-CL',{month:'long'}))+'</strong><span>'+monthPosts.length+' pub.</span></header>'+
+      '<div class="mini-weekdays"><i>L</i><i>M</i><i>X</i><i>J</i><i>V</i><i>S</i><i>D</i></div>'+
+      '<div class="mini-month-grid">'+cells.map(day=>{
+        if(!day)return '<i></i>';
+        const count=(byDay.get(dateKey(day))||[]).length;
+        return '<i class="'+(count?'has-posts':'')+'"><b>'+day.getDate()+'</b>'+(count?'<em>'+count+'</em>':'')+'</i>';
+      }).join('')+'</div></button>');
+  }
+  return '<section class="calendar-year-view">'+months.join('')+'</section>';
+}
+function historyCalendarView(posts){
+  const groups={};
+  for(const p of [...posts].sort((a,b)=>new Date(b.date)-new Date(a.date))){
+    const d=new Date(p.date);
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    (groups[key] ||= []).push(p);
+  }
+  return '<section class="calendar-history-view">'+(Object.keys(groups).length?Object.entries(groups).map(([key,list])=>{
+    const [year,month]=key.split('-').map(Number);
+    const d=new Date(year,month-1,1);
+    return '<article class="calendar-history-month"><header><div><span class="eyebrow">ARCHIVO</span><h2>'+safe(monthTitle(d))+'</h2></div><button data-calendar-month-jump="'+key+'">'+list.length+' publicaciones →</button></header><div class="history-strip">'+list.slice(0,10).map(p=>calendarPostChip(p,true)).join('')+'</div></article>';
+  }).join(''):'<div class="calendar-empty-day">Todavía no hay historial persistente para esta cuenta.</div>')+'</section>';
+}
+function calendarSection(){
+  if(!state.activeAccount) return noAccounts('Calendario');
+  const all=contentRows().map(normalizePost).filter(p=>p.date);
+  const posts=state.period==='history'?all:all.filter(p=>inPeriod(p.date));
+  const range=periodRange();
+  const memory=(state.accountMemory||[]).find(x=>x.account_id===state.activeAccount.id);
+  const view=state.period==='day'?dayCalendarView(posts)
+    :state.period==='week'?weekCalendarView(posts)
+    :state.period==='month'?monthCalendarView(posts)
+    :state.period==='year'?yearCalendarView(posts)
+    :historyCalendarView(posts);
+  return '<section class="section-heading compact calendar-heading"><div><span class="eyebrow">CALENDARIO / '+safe(state.activeAccount.platform.toUpperCase())+'</span><h1>Calendario editorial</h1><p>Observa cuándo se publicó, abre cualquier pieza y recorre el pasado con los mismos filtros del resto de LINK RRSS.</p></div><div class="calendar-memory-badge"><strong>'+all.length+'</strong><span>publicaciones guardadas</span><small>'+(memory?.earliest_post_at?'Desde '+safe(new Date(memory.earliest_post_at).toLocaleDateString('es-CL',{month:'short',year:'numeric'})):'Construyendo historial')+'</small></div></section>'+
+    '<div class="calendar-summary"><span><b>'+posts.length+'</b> en '+safe(range.label)+'</span><span><b>'+compactNumber(posts.reduce((a,p)=>a+p.reach,0))+'</b> alcance</span><span><b>'+compactNumber(posts.reduce((a,p)=>a+postEngagement(p),0))+'</b> interacciones</span></div>'+
+    view;
+}
+function jumpToCalendarDay(key){
+  const target=dateFromKey(key);
+  const today=new Date(); today.setHours(12,0,0,0);
+  const diff=Math.round((target-today)/86400000);
+  state.period='day';state.periodOffset=Math.min(0,diff);renderApp();
+}
+function jumpToCalendarMonth(monthIndex,year=periodRange('year',state.periodOffset).start.getFullYear()){
+  const now=new Date();
+  state.period='month';
+  state.periodOffset=(year-now.getFullYear())*12+(Number(monthIndex)-now.getMonth());
+  state.periodOffset=Math.min(0,state.periodOffset);
+  renderApp();
+}
+
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
   const snap=snapshotFor('content');
@@ -866,6 +1011,45 @@ function openPostDetail(postId){
 }
 
 
+
+function metricDefinitions(){
+  return [
+    {name:'Alcance',short:'Personas únicas',formula:'Cuentas únicas que vieron la pieza.',why:'Mide distribución real. LINK lo usa para separar un problema de distribución de un problema de reacción.'},
+    {name:'Vistas',short:'Reproducciones / visualizaciones',formula:'Cantidad de veces que la pieza fue vista o reproducida. Puede incluir más de una vista por persona.',why:'Mide consumo. En video, una vista no equivale necesariamente a una persona única.'},
+    {name:'Impresiones',short:'Veces mostrada',formula:'Número total de apariciones de la pieza en pantalla.',why:'Comparadas con alcance permiten observar repetición sobre la misma audiencia.'},
+    {name:'Interacciones',short:'Acciones sobre la pieza',formula:'Likes + comentarios + compartidos + guardados.',why:'Es la reacción total simple. Después LINK la descompone porque cada tipo de interacción significa algo distinto.'},
+    {name:'Engagement',short:'Reacción relativa',formula:'Usamos la tasa entregada por la fuente; si falta, LINK puede estimar interacciones ÷ alcance × 100.',why:'Permite comparar piezas con tamaños de audiencia distintos. Se prioriza la comparación contra tu propio histórico.'},
+    {name:'Likes',short:'Aprobación rápida',formula:'Cantidad de Me gusta.',why:'Es una señal ligera: útil para volumen, pero menos fuerte que guardar, compartir o comentar cuando buscamos intención.'},
+    {name:'Comentarios',short:'Conversación',formula:'Cantidad de comentarios recibidos.',why:'Indican intención de conversar. LINK los usa para detectar temas que conviene responder, desarrollar o automatizar con cuidado.'},
+    {name:'Compartidos',short:'Contenido que circula',formula:'Cantidad de veces que la publicación fue compartida.',why:'Es una señal fuerte de utilidad o identificación. Si crece, conviene repetir tema, estructura o promesa.'},
+    {name:'Guardados',short:'Contenido que vale conservar',formula:'Cantidad de veces que la publicación fue guardada.',why:'Suele indicar valor duradero. LINK lo agrupa con compartidos para identificar contenido de utilidad real.'},
+    {name:'Skip rate',short:'Abandono temprano',formula:'Porcentaje de personas que saltan el reel según la métrica entregada por Instagram/Zernio.',why:'LINK marca 60% o más como alerta operativa para probar un hook más fuerte. Es una regla interna de experimentación, no un estándar universal.'},
+    {name:'Watch medio',short:'Tiempo medio visto',formula:'Tiempo promedio de reproducción por vista, mostrado en segundos.',why:'Indica capacidad de mantener atención. Siempre se lee junto a duración total y skip rate.'},
+    {name:'Completion rate',short:'Finalización',formula:'Porcentaje de reproducciones que llegan al final cuando la plataforma lo entrega.',why:'Mide profundidad de consumo. No se interpreta sola porque depende mucho de la duración.'},
+    {name:'Mediana LINK',short:'Tu referencia interna',formula:'Mediana del engagement de las publicaciones comparables disponibles.',why:'“Sobre mediana” significa estar por encima del centro de tu propio histórico visible, no de un benchmark externo.'}
+  ];
+}
+function metricIndexMarkup(){
+  return '<section class="panel metric-dictionary">'+
+    '<div class="panel-head"><div><span class="eyebrow">ÍNDICE DE MÉTRICAS</span><h2>Qué significa cada número y cómo lo usa LINK</h2></div><button id="metric-methodology">Metodología</button></div>'+
+    '<div class="metric-dictionary-grid">'+metricDefinitions().map(m=>
+      '<article><div><strong>'+safe(m.name)+'</strong><span>'+safe(m.short)+'</span></div><p><b>Qué mide:</b> '+safe(m.formula)+'</p><p><b>Por qué importa:</b> '+safe(m.why)+'</p></article>'
+    ).join('')+'</div>'+
+    '<div class="metric-method-note"><strong>Regla principal:</strong> LINK no inventa métricas que la fuente no entrega. Un “—” significa dato no disponible. Los consejos son hipótesis de trabajo basadas en señales observables.</div>'+
+  '</section>';
+}
+function openMetricMethodology(){
+  $('#modal-root').innerHTML='<div class="modal-backdrop"><section class="modal metric-method-modal"><button class="modal-close" id="modal-close">×</button><span class="eyebrow">METODOLOGÍA LINK RRSS</span><h2>Cómo llegamos a los análisis</h2><div class="method-steps">'+
+    '<article><b>1</b><div><strong>Persistimos el dato</strong><p>La publicación y sus métricas quedan guardadas para que el análisis no dependa de una respuesta momentánea.</p></div></article>'+
+    '<article><b>2</b><div><strong>Respetamos el periodo</strong><p>Día, semana, mes, año o histórico. No mezclamos periodos sin indicarlo.</p></div></article>'+
+    '<article><b>3</b><div><strong>Preferimos tu propio histórico</strong><p>Engagement y piezas clave se comparan principalmente con la mediana y comportamiento de tu cuenta.</p></div></article>'+
+    '<article><b>4</b><div><strong>Separamos distribución, reacción y retención</strong><p>Alcance = distribución; interacciones/engagement = reacción; skip/watch/completion = retención.</p></div></article>'+
+    '<article><b>5</b><div><strong>Las alertas son experimentos</strong><p>Ejemplo: skip ≥ 60% activa una recomendación de probar un inicio más fuerte. Es una regla operativa LINK, no un estándar universal.</p></div></article>'+
+  '</div></section></div>';
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+}
+
 function analyticsSection(){
   if(!state.activeAccount) return noAccounts('Analytics');
   const snap=snapshotFor('analytics');
@@ -913,6 +1097,7 @@ function analyticsSection(){
           <div class="insight-grid">${signals.slice(0,3).map(s=>'<article><strong>'+safe(s.title)+'</strong><p>'+safe(s.text)+'</p></article>').join('')}</div>
         </section>
       </div>
+      ${metricIndexMarkup()}
     </div>`;
 }
 
@@ -1009,6 +1194,7 @@ function bodySection(){
   if(state.section==='connections') return connectionsSection();
   if(state.section==='inbox') return inboxSection();
   if(state.section==='content') return contentSection();
+  if(state.section==='calendar') return calendarSection();
   if(state.section==='analytics') return analyticsSection();
   if(state.section==='automations') return automationsSection();
   if(state.section==='activity') return activitySection();
@@ -1030,7 +1216,7 @@ function renderApp(){
     </div>
     <div id="modal-root"></div>
     <div id="toast" class="toast hidden"></div>`;
-  createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck}});
+  createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
   setTimeout(()=>loadCurrentSection(),0);
 }
@@ -1092,6 +1278,12 @@ function bind(){
     el.onclick=()=>openPostDetail(el.dataset.postOpen);
     el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPostDetail(el.dataset.postOpen);}};
   });
+  document.querySelectorAll('[data-calendar-day]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();jumpToCalendarDay(btn.dataset.calendarDay);});
+  document.querySelectorAll('[data-calendar-month]').forEach(btn=>btn.onclick=()=>jumpToCalendarMonth(Number(btn.dataset.calendarMonth)));
+  document.querySelectorAll('[data-calendar-month-jump]').forEach(btn=>btn.onclick=()=>{
+    const [y,m]=btn.dataset.calendarMonthJump.split('-').map(Number);jumpToCalendarMonth(m-1,y);
+  });
+  $('#metric-methodology')?.addEventListener('click',openMetricMethodology);
   document.querySelectorAll('[data-conversation]').forEach(btn=>btn.onclick=()=>{
     state.selectedConversationId=btn.dataset.conversation;
     renderApp();
