@@ -38,7 +38,12 @@ const state = {
   loading: false,
   search: '',
   canManage: false,
-  autoSyncAttempted: new Set()
+  autoSyncAttempted: new Set(),
+  workspace: null,
+  snapshots: [],
+  syncRuns: [],
+  syncing: false,
+  businessLoadedId: null
 };
 
 const nav = [
@@ -123,47 +128,139 @@ async function loadBase(){
 
   const requested=new URLSearchParams(location.search).get('business');
   state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
-  await loadBusiness();
+  await loadBusiness({restore:true});
   await handleZernioReturn();
   await handleRecoveryFlow();
 }
 
-async function loadBusiness(){
+async function loadBusiness(opts={}){
   if(!state.business){ renderApp(); return; }
   const { id } = state.business;
+  const businessChanged=state.businessLoadedId!==id;
   const profileTable=state.canManage?'link_rrss_profiles':'link_rrss_public_profiles_v';
   const sourceTable=state.canManage?'link_rrss_sources':'link_rrss_public_sources_v';
   const accountTable=state.canManage?'link_rrss_accounts':'link_rrss_public_accounts_v';
-  const p = await db.from(profileTable).select('*').eq('business_id',id).order('created_at');
+
+  const [p,statusRow]=await Promise.all([
+    db.from(profileTable).select('*').eq('business_id',id).order('created_at'),
+    db.from('link_world_rrss_status_v').select('*').eq('business_id',id).maybeSingle()
+  ]);
   if(p.error) throw p.error;
   state.profiles=p.data||[];
+  if(statusRow.data){
+    state.statuses=state.statuses.filter(x=>x.business_id!==id).concat(statusRow.data);
+  }
+
   const profileIds=state.profiles.map(x=>x.id);
   if(profileIds.length){
     const s=await db.from(sourceTable).select('*').in('profile_id',profileIds).order('created_at');
     if(s.error) throw s.error;
     state.sources=s.data||[];
   } else state.sources=[];
+
   const sourceIds=state.sources.map(x=>x.id);
   if(sourceIds.length){
     const a=await db.from(accountTable).select('*').in('source_id',sourceIds).order('platform').order('username');
     if(a.error) throw a.error;
     state.accounts=a.data||[];
   } else state.accounts=[];
-  if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
-    state.activeAccount=state.accounts[0]||null;
+
+  if(state.canManage){
+    const [ws,snaps,runs]=await Promise.all([
+      db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
+      db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
+      db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12)
+    ]);
+    state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle'};
+    state.snapshots=snaps.data||[];
+    state.syncRuns=runs.data||[];
+
+    if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
+      state.section=state.workspace.last_section;
+    }
+    const remembered=state.accounts.find(x=>x.id===state.workspace?.active_account_id);
+    if(businessChanged || !state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
+      state.activeAccount=remembered||state.accounts[0]||null;
+    }
+  } else {
+    state.workspace=null; state.snapshots=[]; state.syncRuns=[];
+    if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
+      state.activeAccount=state.accounts[0]||null;
+    }
   }
+
+  state.businessLoadedId=id;
   state.liveData={};
   syncUrl();
   renderApp();
-  if(state.canManage && state.sources.length && !state.accounts.length){
-    const source=state.sources[0];
-    if(!state.autoSyncAttempted.has(source.id)){
-      state.autoSyncAttempted.add(source.id);
-      setTimeout(()=>syncSource(source.id,{silent:true}),0);
-      return;
-    }
+
+  if(state.canManage){
+    persistWorkspace();
+    setTimeout(()=>maybeAutoSync(false),80);
   }
-  setTimeout(()=>loadCurrentSection(),0);
+}
+
+function snapshotFor(module,accountId=state.activeAccount?.id){
+  const matching=state.snapshots.filter(s=>s.module===module && (accountId?s.account_id===accountId:true));
+  if(accountId) return matching.find(s=>s.account_id===accountId)||null;
+  return matching[0]||null;
+}
+function sourceSnapshot(module){
+  const source=sourceForActiveAccount()||state.sources[0];
+  return state.snapshots.find(s=>s.module===module && s.source_id===source?.id && !s.account_id)||null;
+}
+function snapshotError(snap){
+  if(!snap?.error) return null;
+  try{return JSON.parse(snap.error);}catch{return {message:snap.error};}
+}
+function isSnapshotStale(snap){return !snap || !snap.stale_after || new Date(snap.stale_after).getTime()<=Date.now();}
+function ago(v){
+  if(!v)return 'Nunca';
+  const ms=Date.now()-new Date(v).getTime();
+  if(ms<60000)return 'Ahora';
+  if(ms<3600000)return 'Hace '+Math.max(1,Math.round(ms/60000))+' min';
+  if(ms<86400000)return 'Hace '+Math.round(ms/3600000)+' h';
+  return fmtDate(v);
+}
+function syncStateLabel(){
+  if(state.syncing)return 'Sincronizando';
+  const s=state.workspace?.last_sync_status||'idle';
+  return ({ok:'Al día',partial:'Parcial',error:'Error',syncing:'Sincronizando',idle:'Sin sincronizar'})[s]||s;
+}
+async function persistWorkspace(){
+  if(!state.canManage||!state.business)return;
+  try{
+    await invokeZernio({
+      action:'workspace.touch',
+      business_id:state.business.id,
+      last_section:state.section,
+      active_account_id:state.activeAccount?.id||null,
+      active_profile_id:state.profiles[0]?.id||null
+    });
+  }catch{}
+}
+function needsAutoSync(){
+  if(!state.canManage||!state.sources.length||state.syncing)return false;
+  const last=state.workspace?.last_full_sync_at;
+  if(!last)return true;
+  const minutes=Number(state.workspace?.sync_interval_minutes||5);
+  return Date.now()-new Date(last).getTime()>minutes*60000;
+}
+async function maybeAutoSync(force=false){
+  if(!state.canManage||!state.business||!state.sources.length||state.syncing)return;
+  if(!force && !needsAutoSync())return;
+  state.syncing=true;
+  renderApp();
+  try{
+    await invokeZernio({action:'sync.business',business_id:state.business.id,trigger:force?'manual':'app_open'});
+    await loadBusiness({restore:false});
+  }catch(e){
+    state.syncing=false;
+    toast(e.message||String(e),true);
+    await loadBusiness({restore:false});
+  }finally{
+    state.syncing=false;
+  }
 }
 
 function syncUrl(){
@@ -236,8 +333,9 @@ function topbar(){
       <button class="mobile-menu" id="mobile-menu">☰</button>
       <div class="crumb"><span>LINK WORLD</span><b>/</b><strong>${safe(state.business?.name||'RRSS')}</strong></div>
       <div class="top-actions">
+        ${state.canManage?'<span class="sync-memory '+(state.syncing?'syncing':'')+'"><b>'+safe(syncStateLabel())+'</b><small>'+safe(ago(state.workspace?.last_full_sync_at))+'</small></span>':''}
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
-        <button class="icon-btn" id="refresh"><i data-lucide="refresh-cw"></i></button>
+        <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Forzar sincronización"><i data-lucide="refresh-cw"></i></button>
       </div>
     </header>`;
 }
@@ -357,30 +455,81 @@ function connectionsSection(){
   `;
 }
 
+function issuePanel(title,snap){
+  const err=snapshotError(snap)||{};
+  const group=err.required_group||err.requiredGroup||null;
+  return `<div class="memory-state blocked"><div class="memory-icon">!</div><div><span class="eyebrow">CAPACIDAD BLOQUEADA</span><h2>${safe(title)}</h2><p>${safe(group?'Zernio necesita habilitar el permiso '+group+'.':err.message||snap?.error||'Esta capacidad no está disponible todavía.')}</p>${group?'<span class="permission-chip">'+safe(group)+'</span>':''}</div></div>`;
+}
+function emptyMemory(title,text){
+  return `<div class="memory-state"><div class="memory-icon">·</div><div><span class="eyebrow">MEMORIA LINK</span><h2>${safe(title)}</h2><p>${safe(text)}</p></div></div>`;
+}
 function inboxSection(){
   if(!state.activeAccount) return noAccounts('Conversaciones');
+  const snap=snapshotFor('inbox');
+  let body='';
+  if(!snap) body=emptyMemory('Preparando Inbox','LINK RRSS está construyendo la primera memoria de esta cuenta.');
+  else if(snap.status==='blocked'||snap.status==='error') body=issuePanel('Inbox no disponible',snap);
+  else {
+    const rows=snap.payload?.data||snap.payload?.conversations||[];
+    body=Array.isArray(rows)&&rows.length
+      ?`<div class="conversation-list">${rows.map(x=>`<button class="conversation-item"><span class="conversation-avatar">${safe((x.participantName||x.participantUsername||x.username||'?')[0]?.toUpperCase()||'?')}</span><div><strong>${safe(x.participantName||x.participantUsername||x.username||'Contacto')}</strong><p>${safe(x.lastMessage?.text||x.lastMessageText||x.preview||'Conversación')}</p></div><small>${safe(fmtDate(x.lastMessageAt||x.updatedAt))}</small></button>`).join('')}</div><div class="conversation-empty"><strong>Inbox persistente</strong><span>Última memoria: ${safe(ago(snap.fetched_at))}</span></div>`
+      :emptyMemory('Sin conversaciones sincronizadas','Zernio no devolvió conversaciones para esta cuenta.');
+  }
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">INBOX / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Conversaciones</h1><p>DMs leídos directamente desde Zernio para la cuenta seleccionada.</p></div><button id="load-inbox"><i data-lucide="refresh-cw"></i>Actualizar</button></section>
-    <div id="inbox-live" class="conversation-layout"><div class="panel loading-panel">Selecciona Actualizar para consultar Zernio.</div></div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">INBOX / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Conversaciones</h1><p>Memoria persistente de conversaciones. Se refresca automáticamente desde Zernio.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <div id="inbox-live" class="conversation-layout">${body}</div>`;
 }
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
+  const snap=snapshotFor('content');
+  if(snap?.status==='blocked'||snap?.status==='error') return `<section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1></div></section>${issuePanel('Contenido no disponible',snap)}`;
+  const rows=snap?.payload?.posts||snap?.payload?.data||[];
+  const body=Array.isArray(rows)&&rows.length?rows.map(p=>{
+    const text=p.message||p.content||p.caption||p.text||'Publicación sin texto';
+    const when=p.createdTime||p.publishedAt||p.createdAt||p.scheduledFor;
+    const image=p.picture||p.thumbnail||p.mediaUrl||null;
+    const likes=p.likeCount??p.likes??null, comments=p.commentCount??p.comments??null, shares=p.shareCount??p.shares??null;
+    return `<article class="post-card rich-post">${image?'<div class="post-media"><img src="'+safe(image)+'" alt=""></div>':''}<div class="post-meta"><span>${safe((p.mediaType||state.activeAccount.platform||'post').toUpperCase())}</span><small>${safe(fmtDate(when))}</small></div><p>${safe(String(text).slice(0,520))}</p><div class="post-metrics">${likes!==null?'<span>♥ '+safe(likes)+'</span>':''}${comments!==null?'<span>◌ '+safe(comments)+'</span>':''}${shares!==null?'<span>↗ '+safe(shares)+'</span>':''}</div>${p.permalink?'<a href="'+safe(p.permalink)+'" target="_blank" rel="noreferrer">Ver publicación ↗</a>':''}</article>`;
+  }).join(''):emptyMemory('Sin publicaciones en memoria','La sincronización automática todavía no tiene publicaciones para mostrar.');
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Contenido publicado en la plataforma, incluyendo piezas creadas fuera de LINK cuando Zernio las sincroniza.</p></div><button id="load-content"><i data-lucide="refresh-cw"></i>Actualizar</button></section>
-    <div id="content-live" class="content-grid"><div class="panel loading-panel">Consulta pendiente.</div></div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Contenido persistido en Supabase y refrescado automáticamente desde Zernio.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <div id="content-live" class="content-grid">${body}</div>`;
 }
 function analyticsSection(){
   if(!state.activeAccount) return noAccounts('Analytics');
+  const snap=snapshotFor('analytics');
+  if(snap?.status==='blocked'||snap?.status==='error') return `<section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1></div></section>${issuePanel('Analytics no disponible',snap)}`;
+  const root=snap?.payload||{}, rows=root.posts||root.data||[], overview=root.overview||{};
+  const sum=(key)=>Array.isArray(rows)?rows.reduce((a,p)=>a+Number(p?.metrics?.[key]??p?.[key]??0),0):0;
+  const metrics=[
+    ['Posts',overview.totalPosts??(Array.isArray(rows)?rows.length:'—')],
+    ['Alcance',overview.reach??sum('reach')||'—'],
+    ['Impresiones',overview.impressions??sum('impressions')||'—'],
+    ['Interacciones',overview.engagement??(sum('likes')+sum('comments')+sum('shares')+sum('saves'))||'—']
+  ];
+  const top=Array.isArray(rows)?rows.slice(0,5):[];
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1><p>Las métricas se obtienen desde la API Zernio de la fuente seleccionada.</p></div><button id="load-analytics"><i data-lucide="refresh-cw"></i>Actualizar</button></section>
-    <div id="analytics-live" class="analytics-shell"><div class="panel loading-panel">Consulta pendiente.</div></div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1><p>Última memoria analítica guardada en LINK RRSS.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <div id="analytics-live" class="analytics-shell">
+      <div class="metric-row">${metrics.map(([k,v])=>`<article><strong>${safe(v)}</strong><span>${safe(k)}</span></article>`).join('')}</div>
+      <section class="panel"><div class="panel-head"><div><span class="eyebrow">CONTENIDO MEDIDO</span><h2>Últimas piezas</h2></div></div>
+      <div class="analytics-list">${top.length?top.map(p=>`<div><strong>${safe((p.content||p.message||p.caption||'Publicación').slice(0,90))}</strong><span>Alcance ${safe(p.metrics?.reach??p.reach??'—')} · Likes ${safe(p.metrics?.likes??p.likes??'—')} · Comentarios ${safe(p.metrics?.comments??p.comments??'—')}</span></div>`).join(''):'<p class="muted">Sin detalle de piezas todavía.</p>'}</div></section>
+    </div>`;
 }
 function automationsSection(){
   const source=sourceForActiveAccount()||state.sources[0];
   if(!source) return noAccounts('Automatizaciones');
+  const snap=sourceSnapshot('automations');
+  const payload=snap?.payload||{};
+  const blocks=[['Workflows',payload.workflows],['Comentario → DM',payload.comment_automations],['Secuencias',payload.sequences]];
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">AUTOMATIZACIÓN</span><h1>Flujos</h1><p>Workflows, secuencias y automatizaciones comentario → DM del motor Zernio.</p></div><button id="load-automations"><i data-lucide="refresh-cw"></i>Actualizar</button></section>
-    <div id="automation-live" class="automation-grid"><div class="panel loading-panel">Consulta pendiente.</div></div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">AUTOMATIZACIÓN</span><h1>Flujos</h1><p>Estado persistente de workflows, secuencias y comentario → DM.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <div id="automation-live" class="automation-grid">${blocks.map(([title,data])=>{
+      if(!data)return `<article class="panel automation-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><p class="muted">Aún sin memoria.</p></article>`;
+      if(data.ok===false){const g=data.error?.required_group;return `<article class="panel automation-card blocked-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><p>${safe(g?'Bloqueado · falta permiso '+g:data.error?.message||'No disponible')}</p></article>`;}
+      const arr=data.data?.data||data.data?.workflows||data.data?.sequences||data.data?.automations||[];
+      return `<article class="panel automation-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><strong class="automation-count">${Array.isArray(arr)?arr.length:'✓'}</strong><p class="muted">${Array.isArray(arr)?'elementos detectados':'Conectado'}</p></article>`;
+    }).join('')}</div>`;
 }
 function activitySection(){
   return `
@@ -430,13 +579,14 @@ function renderApp(){
 function bind(){
   document.querySelectorAll('[data-business]').forEach(btn=>btn.onclick=async()=>{
     state.business=state.businesses.find(x=>x.id===btn.dataset.business);
-    state.section='home'; state.activeAccount=null; await loadBusiness();
+    state.activeAccount=null;
+    await loadBusiness({restore:true});
   });
   document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{
-    state.section=btn.dataset.section; renderApp();
+    state.section=btn.dataset.section; renderApp(); persistWorkspace();
   });
-  document.querySelectorAll('[data-section-jump]').forEach(btn=>btn.onclick=()=>{state.section=btn.dataset.sectionJump;renderApp();});
-  document.querySelectorAll('[data-account]').forEach(btn=>btn.onclick=()=>{state.activeAccount=state.accounts.find(x=>x.id===btn.dataset.account);renderApp();});
+  document.querySelectorAll('[data-section-jump]').forEach(btn=>btn.onclick=()=>{state.section=btn.dataset.sectionJump;renderApp();persistWorkspace();});
+  document.querySelectorAll('[data-account]').forEach(btn=>btn.onclick=()=>{state.activeAccount=state.accounts.find(x=>x.id===btn.dataset.account);renderApp();persistWorkspace();});
   $('#business-search')?.addEventListener('input',e=>{state.search=e.target.value;renderApp();$('#business-search')?.focus();});
   $('#quick-connect')?.addEventListener('click',openConnectionModal);
   $('#add-source')?.addEventListener('click',openConnectionModal);
@@ -449,7 +599,7 @@ function bind(){
   $('#admin-login')?.addEventListener('click',openAdminLoginModal);
   $('#admin-empty')?.addEventListener('click',openAdminLoginModal);
   $('#admin-connections')?.addEventListener('click',openAdminLoginModal);
-  $('#refresh')?.addEventListener('click',loadBusiness);
+  $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
   $('#back-world')?.addEventListener('click',()=>{location.href=LINK_WORLD_URL+(state.business?('?business='+encodeURIComponent(state.business.id)):'');});
   $('#mobile-menu')?.addEventListener('click',()=>document.body.classList.add('side-open'));
@@ -464,12 +614,7 @@ function bind(){
 }
 
 async function loadCurrentSection(){
-  if(!state.canManage) return;
-  if(state.section==='home' && state.sources[0] && state.activeAccount) return loadHomeLive();
-  if(state.section==='inbox' && state.activeAccount) return loadInbox();
-  if(state.section==='content' && state.activeAccount) return loadContent();
-  if(state.section==='analytics' && state.activeAccount) return loadAnalytics();
-  if(state.section==='automations' && state.sources[0]) return loadAutomations();
+  return;
 }
 
 function sourceForActiveAccount(){
@@ -723,80 +868,11 @@ async function syncSource(id,opts={}){
   }
 }
 
-async function loadHomeLive(){
-  const source=state.sources[0];const account=state.accounts[0];
-  if(!source||!account)return;
-  try{
-    const [posts,inbox]=await Promise.all([
-      invokeZernio({action:'zernio.get',source_id:source.id,path:`/v1/accounts/${encodeURIComponent(account.external_account_id)}/posts`,query:{limit:4}}).catch(()=>({data:null})),
-      invokeZernio({action:'zernio.get',source_id:source.id,path:'/v1/inbox/conversations',query:{accountId:account.external_account_id,platform:account.platform,limit:4,sortOrder:'desc'}}).catch(()=>({data:null}))
-    ]);
-    const items=[];
-    const postRows=posts.data?.posts||posts.data?.data||[];
-    const convRows=inbox.data?.data||inbox.data?.conversations||[];
-    for(const p of Array.isArray(postRows)?postRows.slice(0,4):[]) items.push({kind:'Publicación',title:p.content||p.caption||p.text||'Contenido publicado',meta:fmtDate(p.publishedAt||p.createdAt||p.scheduledFor)});
-    for(const c of Array.isArray(convRows)?convRows.slice(0,4):[]) items.push({kind:'DM',title:c.participantName||c.participantUsername||c.username||'Conversación',meta:fmtDate(c.lastMessageAt||c.updatedAt)});
-    $('#home-live').innerHTML=items.length?items.slice(0,6).map(i=>`<div class="activity-row"><span class="activity-type">${safe(i.kind)}</span><div><strong>${safe(i.title)}</strong><small>${safe(i.meta)}</small></div></div>`).join(''):'<div class="muted">Sin actividad disponible todavía.</div>';
-  }catch(e){$('#home-live').innerHTML=`<div class="inline-error">${safe(e.message||String(e))}</div>`;}
-}
-
-async function loadInbox(){
-  if(!state.canManage){openAdminLoginModal();return;}
-  const el=$('#inbox-live'),a=state.activeAccount,s=sourceForActiveAccount(); if(!el||!a||!s)return;
-  el.innerHTML='<div class="panel loading-panel">Consultando Inbox…</div>';
-  try{
-    const out=await invokeZernio({action:'zernio.get',source_id:s.id,path:'/v1/inbox/conversations',query:{accountId:a.external_account_id,platform:a.platform,limit:30,sortOrder:'desc'}});
-    const rows=out.data?.data||out.data?.conversations||out.data||[];
-    if(!Array.isArray(rows)||!rows.length){el.innerHTML='<div class="panel loading-panel">No hay conversaciones visibles para esta cuenta.</div>';return;}
-    el.innerHTML=`<div class="conversation-list">${rows.map(c=>`<button class="conversation-item"><span class="conversation-avatar">${safe((c.participantName||c.participantUsername||'?')[0]?.toUpperCase()||'?')}</span><div><strong>${safe(c.participantName||c.participantUsername||c.username||'Contacto')}</strong><p>${safe(c.lastMessage?.text||c.lastMessageText||c.preview||'Conversación')}</p></div><small>${safe(fmtDate(c.lastMessageAt||c.updatedAt))}</small></button>`).join('')}</div><div class="conversation-empty"><i data-lucide="message-circle"></i><strong>Selecciona una conversación</strong><span>El detalle de mensajes se abrirá aquí.</span></div>`;
-    createIcons({icons:{MessageCircle}});
-  }catch(e){el.innerHTML=`<div class="panel inline-error">${safe(e.message||String(e))}</div>`;}
-}
-
-async function loadContent(){
-  if(!state.canManage){openAdminLoginModal();return;}
-  const el=$('#content-live'),a=state.activeAccount,s=sourceForActiveAccount();if(!el||!a||!s)return;
-  el.innerHTML='<div class="panel loading-panel">Consultando publicaciones…</div>';
-  try{
-    const out=await invokeZernio({action:'zernio.get',source_id:s.id,path:`/v1/accounts/${encodeURIComponent(a.external_account_id)}/posts`,query:{limit:30}});
-    const rows=out.data?.posts||out.data?.data||out.data||[];
-    if(!Array.isArray(rows)||!rows.length){el.innerHTML='<div class="panel loading-panel">No hay publicaciones visibles.</div>';return;}
-    el.innerHTML=rows.map(p=>`<article class="post-card"><div class="post-meta"><span>${safe(a.platform)}</span><small>${safe(fmtDate(p.publishedAt||p.createdAt||p.scheduledFor))}</small></div><p>${safe((p.content||p.caption||p.text||'Sin texto').slice(0,360))}</p><div class="post-state">${safe(p.status||p.state||'publicado')}</div></article>`).join('');
-  }catch(e){el.innerHTML=`<div class="panel inline-error">${safe(e.message||String(e))}</div>`;}
-}
-
-async function loadAnalytics(){
-  if(!state.canManage){openAdminLoginModal();return;}
-  const el=$('#analytics-live'),a=state.activeAccount,s=sourceForActiveAccount();if(!el||!a||!s)return;
-  el.innerHTML='<div class="panel loading-panel">Consultando analytics…</div>';
-  try{
-    const out=await invokeZernio({action:'zernio.get',source_id:s.id,path:'/v1/analytics',query:{accountId:a.external_account_id,platform:a.platform}});
-    const root=out.data||{};const rows=root.posts||root.data||[];
-    const overview=root.overview||{};
-    const metrics=[
-      ['Posts',overview.totalPosts??(Array.isArray(rows)?rows.length:'—')],
-      ['Publicados',overview.publishedPosts??'—'],
-      ['Programados',overview.scheduledPosts??'—'],
-      ['Acceso',root.hasAnalyticsAccess===false?'Limitado':'Activo']
-    ];
-    el.innerHTML=`<div class="metric-row">${metrics.map(([k,v])=>`<article><strong>${safe(v)}</strong><span>${safe(k)}</span></article>`).join('')}</div><section class="panel"><div class="panel-head"><div><span class="eyebrow">DATOS CRUDOS</span><h2>Última lectura</h2></div></div><pre class="json-preview">${safe(JSON.stringify(root,null,2).slice(0,12000))}</pre></section>`;
-  }catch(e){el.innerHTML=`<div class="panel inline-error">${safe(e.message||String(e))}</div>`;}
-}
-
-async function loadAutomations(){
-  if(!state.canManage){openAdminLoginModal();return;}
-  const el=$('#automation-live'),s=sourceForActiveAccount()||state.sources[0];if(!el||!s)return;
-  el.innerHTML='<div class="panel loading-panel">Consultando automatizaciones…</div>';
-  try{
-    const [wf,ca,seq]=await Promise.all([
-      invokeZernio({action:'zernio.get',source_id:s.id,path:'/v1/workflows',query:{limit:50}}).catch(e=>({error:e.message})),
-      invokeZernio({action:'zernio.get',source_id:s.id,path:'/v1/comment-automations',query:{limit:50}}).catch(e=>({error:e.message})),
-      invokeZernio({action:'zernio.get',source_id:s.id,path:'/v1/sequences',query:{limit:50}}).catch(e=>({error:e.message}))
-    ]);
-    const blocks=[['Workflows',wf],['Comentario → DM',ca],['Secuencias',seq]];
-    el.innerHTML=blocks.map(([title,data])=>`<article class="panel automation-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2>${data.error?`<p class="inline-error">${safe(data.error)}</p>`:`<pre class="json-preview small">${safe(JSON.stringify(data.data,null,2).slice(0,5000))}</pre>`}</article>`).join('');
-  }catch(e){el.innerHTML=`<div class="panel inline-error">${safe(e.message||String(e))}</div>`;}
-}
+async function loadHomeLive(){return;}
+async function loadInbox(){return maybeAutoSync(true);}
+async function loadContent(){return maybeAutoSync(true);}
+async function loadAnalytics(){return maybeAutoSync(true);}
+async function loadAutomations(){return maybeAutoSync(true);}
 
 loadBase().catch(e=>{
   $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir LINK RRSS.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
