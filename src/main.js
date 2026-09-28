@@ -877,28 +877,28 @@ function automationsSection(){
     </section>`;
 }
 
+
 function activitySection(){
-  const runs=state.syncRuns||[];
-  const moduleState=state.workspace?.module_state||{};
+  const allRows=socialActivityRows();
+  const rows=allRows.filter(x=>state.activityType==='all'||x.activity_type===state.activityType);
+  const typeLabel={message:'Mensaje',comment:'Comentario',publication:'Publicación',engagement:'Interacción'};
+  const counts=allRows.reduce((a,x)=>(a[x.activity_type]=(a[x.activity_type]||0)+1,a),{});
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">MEMORIA / TRAZABILIDAD</span><h1>Actividad</h1><p>Cada apertura, sincronización y bloqueo queda registrado. Esta es la memoria operativa del aparato RRSS.</p></div><span class="freshness">${safe(ago(state.workspace?.last_full_sync_at))}</span></section>
-    <div class="activity-dashboard">
-      <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">SINCRONIZACIONES</span><h2>Historial</h2></div></div>
-        <div class="sync-run-list">${runs.length?runs.map(r=>`<div class="sync-run"><span class="status-dot ${r.status==='ok'?'ok':r.status==='partial'?'warn':r.status==='error'?'warn':'pending'}"></span><div><strong>${safe(r.trigger||'sync')}</strong><small>${safe(fmtDate(r.started_at))} · ${safe(r.status)}</small></div><span>${safe(Array.isArray(r.modules)?r.modules.length:0)} módulos</span></div>`).join(''):'<p class="muted">Todavía no hay historial.</p>'}</div>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">DIAGNÓSTICO</span><h2>Último ciclo</h2></div></div>
-        <div class="diagnostic-grid">
-          <div><strong>${safe(moduleState.accounts??state.accounts.length)}</strong><span>cuentas</span></div>
-          <div><strong>${safe(moduleState.sources??state.sources.length)}</strong><span>fuentes</span></div>
-          <div><strong>${safe(moduleState.blocked?.length??0)}</strong><span>bloqueos</span></div>
-          <div><strong>${safe(moduleState.errors?.length??0)}</strong><span>errores</span></div>
-        </div>
-        ${moduleState.blocked?.length?`<div class="blocked-summary">${moduleState.blocked.map(x=>`<span>${safe(x.module)} · falta ${safe(x.required_group||'permiso')}</span>`).join('')}</div>`:''}
-      </section>
-    </div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">ACTIVIDAD / ZERNIO + REDES</span><h1>Qué está pasando afuera</h1><p>Mensajes, comentarios, publicaciones e interacción social. No registramos clics internos de la app como si fueran actividad del negocio.</p></div><span class="freshness">${safe(ago(state.workspace?.last_full_sync_at))}</span></section>
+    <div class="activity-filter">
+      ${[['all','Todo'],['message','Mensajes'],['comment','Comentarios'],['publication','Publicaciones'],['engagement','Interacción']].map(([id,label])=>'<button data-activity-type="'+id+'" class="'+(state.activityType===id?'active':'')+'">'+label+(id!=='all'&&counts[id]?' · '+counts[id]:'')+'</button>').join('')}
+    </div>
+    <section class="social-activity-feed">
+      ${rows.length?rows.map(x=>{
+        const p=x.payload||{};
+        const title=x.activity_type==='message'?(p.participant_name||'Mensaje recibido'):x.activity_type==='comment'?(p.author_name||p.author_username||'Comentario'):x.activity_type==='publication'?'Publicación detectada':'Interacción actualizada';
+        const text=x.activity_type==='message'?p.message:x.activity_type==='comment'?p.text:x.activity_type==='publication'?p.text:('♥ '+numberOf(p.metrics?.likes)+' · ◌ '+numberOf(p.metrics?.comments)+' · ↗ '+numberOf(p.metrics?.shares)+' · alcance '+compactNumber(p.metrics?.reach));
+        return '<article class="social-event '+safe(x.activity_type)+'"><span class="event-dot"></span><div><div class="event-meta"><span>'+safe(typeLabel[x.activity_type]||x.activity_type)+'</span><small>'+safe(ago(x.occurred_at))+'</small></div><strong>'+safe(title)+'</strong><p>'+safe(String(text||'Sin texto').slice(0,260))+'</p>'+(p.unread_count?'<span class="event-unread">'+p.unread_count+' sin leer</span>':'')+'</div>'+(p.url?'<a href="'+safe(p.url)+'" target="_blank" rel="noreferrer">↗</a>':'')+'</article>';
+      }).join(''):'<div class="memory-state"><div class="memory-icon">·</div><div><span class="eyebrow">SIN EVENTOS</span><h2>No hay actividad en este periodo.</h2><p>Cambia el filtro o espera la próxima señal de Zernio/Instagram.</p></div></div>'}
+    </section>
+    <p class="activity-note">Las identidades de personas se muestran solo cuando la plataforma/Zernio las entrega. Los likes agregados pueden venir sin identidad individual.</p>`;
 }
+
 function noAccounts(title){return `<section class="empty-apparatus small"><span class="eyebrow">${safe(title.toUpperCase())}</span><h1>Primero conecta una cuenta.</h1><p>Ve a Conexiones y añade una fuente Zernio. LINK detectará automáticamente las cuentas disponibles.</p><button class="primary" data-section-jump="connections">Ir a Conexiones</button></section>`;}
 
 function bodySection(){
