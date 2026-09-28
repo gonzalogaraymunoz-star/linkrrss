@@ -115,6 +115,7 @@ async function loadBase(){
   state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
   await loadBusiness();
   await handleZernioReturn();
+  await handleRecoveryFlow();
 }
 
 async function loadBusiness(){
@@ -467,11 +468,13 @@ function openAdminLoginModal(){
           <label>Contraseña<input id="admin-password" type="password" autocomplete="current-password" required></label>
           <button class="primary wide" type="submit">Entrar a administración</button>
         </form>
+        <button class="auth-secondary" id="admin-forgot" type="button">No recuerdo mi contraseña</button>
         <div id="admin-login-error" class="connect-status hidden"></div>
       </section>
     </div>`;
   $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
   $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+  $('#admin-forgot').onclick=()=>openPasswordRecoveryModal();
   $('#admin-login-form').onsubmit=async e=>{
     e.preventDefault();
     const box=$('#admin-login-error');box.classList.add('hidden');
@@ -486,6 +489,66 @@ function openAdminLoginModal(){
     $('#modal-root').innerHTML='';
     await loadBase();
   };
+}
+
+async function openPasswordRecoveryModal(){
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal compact-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <span class="eyebrow">RECUPERAR ACCESO</span>
+        <h2>Crear una contraseña LINK</h2>
+        <p>Te enviaremos un enlace que volverá directamente a LINK RRSS, no al Swagger del CRM.</p>
+        <form id="recovery-form">
+          <label>Correo<input id="recovery-email" type="email" value="gonzalogaraymunoz@gmail.com" required></label>
+          <button class="primary wide" type="submit">Enviar enlace</button>
+        </form>
+        <div id="recovery-status" class="connect-status hidden"></div>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('#recovery-form').onsubmit=async e=>{
+    e.preventDefault();
+    const box=$('#recovery-status');box.classList.remove('hidden','error');box.textContent='Enviando…';
+    const redirectTo=location.origin+location.pathname+'?recovery=1';
+    const {error}=await db.auth.resetPasswordForEmail($('#recovery-email').value.trim(),{redirectTo});
+    if(error){box.textContent=error.message;box.classList.add('error');return;}
+    box.textContent='Correo enviado. Abre el enlace desde este mismo navegador.';
+  };
+}
+
+async function handleRecoveryFlow(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('recovery')!=='1') return false;
+
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop recovery-lock">
+      <section class="modal compact-modal">
+        <span class="eyebrow">NUEVA CONTRASEÑA</span>
+        <h2>Define tu acceso LINK</h2>
+        <p>Esta contraseña servirá para entrar al modo Administración de LINK RRSS.</p>
+        <form id="new-password-form">
+          <label>Nueva contraseña<input id="new-password" type="password" minlength="8" autocomplete="new-password" required></label>
+          <label>Repetir contraseña<input id="new-password-confirm" type="password" minlength="8" autocomplete="new-password" required></label>
+          <button class="primary wide" type="submit">Guardar contraseña</button>
+        </form>
+        <div id="new-password-status" class="connect-status hidden"></div>
+      </section>
+    </div>`;
+
+  $('#new-password-form').onsubmit=async e=>{
+    e.preventDefault();
+    const a=$('#new-password').value,b=$('#new-password-confirm').value;
+    const box=$('#new-password-status');box.classList.remove('hidden','error');
+    if(a!==b){box.textContent='Las contraseñas no coinciden.';box.classList.add('error');return;}
+    box.textContent='Guardando…';
+    const {error}=await db.auth.updateUser({password:a});
+    if(error){box.textContent=error.message;box.classList.add('error');return;}
+    const u=new URL(location.href);u.searchParams.delete('recovery');history.replaceState({},'',u);
+    box.textContent='Contraseña creada. Entrando a LINK RRSS…';
+    setTimeout(async()=>{ $('#modal-root').innerHTML=''; await loadBase(); },700);
+  };
+  return true;
 }
 
 async function createMission(){
