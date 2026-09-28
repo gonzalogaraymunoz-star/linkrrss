@@ -813,21 +813,70 @@ function analyticsSection(){
     </div>`;
 }
 
+
+function automationSuggestions(){
+  const suggestions=[];
+  const inbox=conversationRows().filter(c=>inPeriod(conversationDate(c)));
+  const unread=inbox.filter(c=>Number(c.unreadCount||0)>0).length;
+  const posts=filteredPosts();
+  const comments=posts.reduce((a,p)=>a+p.comments,0);
+  const sourceSnap=sourceSnapshot('automations');
+  const payload=sourceSnap?.payload||{};
+  const workflowCount=Array.isArray(payload.workflows?.data?.workflows)?payload.workflows.data.workflows.length:0;
+  const commentCount=Array.isArray(payload.comment_automations?.data?.automations)?payload.comment_automations.data.automations.length:0;
+  if(unread>0) suggestions.push({
+    priority:'Alta',
+    title:'Responder antes de automatizar',
+    why:unread+' conversación(es) sin leer en el periodo.',
+    prompt:'Revisa el Inbox de '+state.business.name+', clasifica las conversaciones sin leer por intención (reserva, horario, carta, evento, proveedor u otro) y propón una respuesta breve para cada una. No inventes horarios ni precios que no estén confirmados.'
+  });
+  if(comments>0&&commentCount===0) suggestions.push({
+    priority:'Media',
+    title:'Diseñar comentario → respuesta',
+    why:comments+' comentario(s) medidos y ninguna automatización detectada.',
+    prompt:'Diseña para '+state.business.name+' una automatización comentario → DM que responda solo cuando la intención sea clara. Define disparadores, exclusiones, tono, límites y cuándo derivar a una persona.'
+  });
+  if(workflowCount===0) suggestions.push({
+    priority:'Media',
+    title:'Primer workflow útil',
+    why:'No hay workflows activos detectados en Zernio.',
+    prompt:'Propón el primer workflow Zernio para '+state.business.name+' usando señales reales de Inbox y publicaciones. Debe ahorrar trabajo repetitivo sin responder automáticamente preguntas que requieran información no verificada.'
+  });
+  const highSkip=posts.filter(p=>p.skipRate>=60).length;
+  if(highSkip>=2) suggestions.push({
+    priority:'Contenido',
+    title:'Experimento de hooks',
+    why:highSkip+' reels del periodo superan 60% de skip.',
+    prompt:'Crea 5 hooks alternativos de 2 segundos para los reels de '+state.business.name+'. Conserva el tono real del negocio y prioriza escenas del local, comida, artistas o público según el contenido original.'
+  });
+  if(!suggestions.length) suggestions.push({
+    priority:'Explorar',
+    title:'Buscar el siguiente ahorro',
+    why:'No hay una urgencia dominante con los datos actuales.',
+    prompt:'Analiza la actividad reciente de '+state.business.name+' en LINK RRSS y encuentra una sola tarea repetitiva que convenga automatizar. Explica el disparador, la acción, el riesgo y cómo medir si funcionó.'
+  });
+  return suggestions.slice(0,4);
+}
 function automationsSection(){
   const source=sourceForActiveAccount()||state.sources[0];
   if(!source) return noAccounts('Automatizaciones');
   const snap=sourceSnapshot('automations');
   const payload=snap?.payload||{};
   const blocks=[['Workflows',payload.workflows],['Comentario → DM',payload.comment_automations],['Secuencias',payload.sequences]];
+  const suggestions=automationSuggestions();
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">AUTOMATIZACIÓN</span><h1>Flujos</h1><p>Estado persistente de workflows, secuencias y comentario → DM.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
-    <div id="automation-live" class="automation-grid">${blocks.map(([title,data])=>{
-      if(!data)return `<article class="panel automation-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><p class="muted">Aún sin memoria.</p></article>`;
-      if(data.ok===false){const g=data.error?.required_group;return `<article class="panel automation-card blocked-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><p>${safe(g?'Bloqueado · falta permiso '+g:data.error?.message||'No disponible')}</p></article>`;}
-      const arr=data.data?.data||data.data?.workflows||data.data?.sequences||data.data?.automations||[];
-      return `<article class="panel automation-card"><span class="eyebrow">${safe(title.toUpperCase())}</span><h2>${safe(title)}</h2><strong class="automation-count">${Array.isArray(arr)?arr.length:'✓'}</strong><p class="muted">${Array.isArray(arr)?'elementos detectados':'Conectado'}</p></article>`;
-    }).join('')}</div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">AUTOMATIZACIÓN / DECISIONES</span><h1>Qué conviene automatizar ahora</h1><p>Primero vemos señales reales del negocio; después proponemos flujos y prompts que reduzcan trabajo sin perder control.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <div class="automation-status-grid">${blocks.map(([title,data])=>{
+      const arr=data?.data?.data||data?.data?.workflows||data?.data?.sequences||data?.data?.automations||[];
+      const count=Array.isArray(arr)?arr.length:(data?.ok?'✓':'—');
+      return '<article class="panel automation-card '+(data?.ok===false?'blocked-card':'')+'"><span class="eyebrow">'+safe(title.toUpperCase())+'</span><h2>'+safe(title)+'</h2><strong class="automation-count">'+safe(count)+'</strong><p class="muted">'+(data?.ok===false?safe(data.error?.message||'No disponible'):'detectado en Zernio')+'</p></article>';
+    }).join('')}</div>
+    <section class="panel automation-advisor">
+      <div class="panel-head"><div><span class="eyebrow">RECOMENDADOR</span><h2>Siguientes automatizaciones</h2></div><small>Basadas en Inbox + contenido + Zernio</small></div>
+      <div class="automation-prompts">${suggestions.map(s=>'<article><div><span class="priority-pill">'+safe(s.priority)+'</span><strong>'+safe(s.title)+'</strong><p>'+safe(s.why)+'</p></div><div class="prompt-box"><code>'+safe(s.prompt)+'</code><button data-copy-prompt="'+safe(s.prompt)+'">Copiar prompt</button></div></article>').join('')}</div>
+    </section>`;
 }
+
 function activitySection(){
   const runs=state.syncRuns||[];
   const moduleState=state.workspace?.module_state||{};
