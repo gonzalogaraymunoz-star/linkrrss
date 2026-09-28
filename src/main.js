@@ -320,12 +320,11 @@ function inPeriod(value,period=state.period){
 function periodControls(){
   const labels={day:'Día',week:'Semana',month:'Mes',year:'Año',history:'Histórico'};
   const range=periodRange();
-  const canNext=state.period!=='history' && state.periodOffset<0;
   return '<div class="period-bar">'+
     '<span>PERIODO</span>'+
     Object.entries(labels).map(([id,label])=>'<button data-period="'+id+'" class="'+(state.period===id?'active':'')+'">'+label+'</button>').join('')+
     '<div class="period-nav">'+
-      (state.period!=='history'?'<button data-period-shift="-1" aria-label="Periodo anterior">←</button><b>'+safe(range.label)+'</b><button data-period-shift="1" '+(canNext?'':'disabled')+' aria-label="Periodo siguiente">→</button>':'<b>'+safe(range.label)+'</b>')+
+      (state.period!=='history'?'<button data-period-shift="-1" aria-label="Periodo anterior">←</button><b>'+safe(range.label)+'</b><button data-period-shift="1" aria-label="Periodo siguiente">→</button>':'<b>'+safe(range.label)+'</b>')+
       (state.periodOffset!==0?'<button data-period-now="1">Hoy</button>':'')+
     '</div>'+
     '<small>La información viene de memoria persistente, no solo de la última sincronización.</small>'+
@@ -934,13 +933,12 @@ function jumpToCalendarDay(key){
   const target=dateFromKey(key);
   const today=new Date(); today.setHours(12,0,0,0);
   const diff=Math.round((target-today)/86400000);
-  state.period='day';state.periodOffset=Math.min(0,diff);renderApp();
+  state.period='day';state.periodOffset=diff;renderApp();
 }
 function jumpToCalendarMonth(monthIndex,year=periodRange('year',state.periodOffset).start.getFullYear()){
   const now=new Date();
   state.period='month';
   state.periodOffset=(year-now.getFullYear())*12+(Number(monthIndex)-now.getMonth());
-  state.periodOffset=Math.min(0,state.periodOffset);
   renderApp();
 }
 
@@ -1270,7 +1268,7 @@ function bind(){
   });
   document.querySelectorAll('[data-period-shift]').forEach(btn=>btn.onclick=()=>{
     const delta=Number(btn.dataset.periodShift||0);
-    state.periodOffset=Math.min(0,state.periodOffset+delta);
+    state.periodOffset=state.periodOffset+delta;
     renderApp();
   });
   document.querySelectorAll('[data-period-now]').forEach(btn=>btn.onclick=()=>{state.periodOffset=0;renderApp();});
