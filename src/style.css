@@ -398,3 +398,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .business-item.game-frozen,.business-item.game-cold{box-shadow:inset 3px 0 0 #78a9d4}
 .business-item.game-hot,.business-item.game-very_hot{box-shadow:inset 3px 0 0 #ef7b38}
 .business-item.game-converted{box-shadow:inset 3px 0 0 #52a06d}
+
+
+/* Persistent memory period navigator */
+.period-nav{display:flex;align-items:center;gap:6px;margin-left:8px;min-width:0}
+.period-nav b{font-size:9px;font-weight:650;color:var(--link-black);white-space:nowrap;padding:0 4px;text-transform:capitalize}
+.period-nav button{min-width:30px;display:inline-grid;place-items:center}
+.period-nav button:disabled{opacity:.32;cursor:default;background:var(--link-paper)!important;color:var(--link-stone)!important}
+.private-panel{max-width:720px;padding:28px!important}
+.private-panel h2{font:600 24px/1.15 'Space Grotesk','DM Sans',sans-serif;color:var(--link-black);letter-spacing:-.035em;margin:7px 0 10px}
+.private-panel p{max-width:620px;color:var(--link-stone);font-size:11px;line-height:1.65;margin:0 0 18px}
+@media(max-width:900px){
+  .period-bar{flex-wrap:wrap!important}
+  .period-nav{order:3;width:100%;margin-left:0;padding-top:3px}
+  .period-bar>small{margin-left:0!important}
+}
+@media(max-width:520px){
+  .period-bar>span{width:100%}
+  .period-nav b{max-width:190px;overflow:hidden;text-overflow:ellipsis}
+}
