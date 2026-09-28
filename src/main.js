@@ -148,7 +148,7 @@ async function loadBase(){
   const [s,g]=await Promise.all([
     db.from('link_world_rrss_status_v').select('*').order('business_name'),
     state.canManage
-      ? db.from('link_game_business_state_v').select('business_id,name,temperature,conversion_percent,game_state,game_state_label,awaiting_evidence_count,next_action_due_at,overdue').order('name')
+      ? db.from('link_game_operating_state_v').select('business_id,name,temperature,conversion_percent,game_state,game_state_label,awaiting_evidence_count,next_action_due_at,overdue,attention_mode,panel_tone,suggested_action,suggested_prompt,hours_remaining').order('name')
       : Promise.resolve({data:[]})
   ]);
   if(s.error) throw s.error;
@@ -652,6 +652,11 @@ function homeSection(){
   const healthy=state.accounts.filter(x=>x.status==='connected').length;
   const last=state.workspace?.last_full_sync_at;
   const actions=[];
+  const gs=gameStateForBusiness(state.business.id);
+  if(gs?.suggested_action){
+    const tone=(gs.game_state==='red_close'||gs.game_state==='critical_frozen')?'urgent':(gs.game_state==='frozen'||gs.game_state==='cold')?'warn':'positive';
+    actions.push({tone,title:gs.game_state_label+' · '+Math.round(Number(gs.temperature||0))+'°',text:gs.suggested_action,gamePrompt:gs.suggested_prompt});
+  }
   if(unread.length) actions.push({tone:'urgent',title:'Responder '+unread.length+' conversación(es)',text:'Hay mensajes sin leer. Prioriza preguntas de compra, reserva, horario o visita.',jump:'inbox'});
   if(best) actions.push({tone:'positive',title:'Repetir lo que funcionó',text:(best.mediaType||'POST')+' · '+(best.engagementRate?best.engagementRate.toFixed(2)+'% ER':'alcance '+compactNumber(best.reach))+'. Abre la ficha para entender la señal.',post:best.id});
   if(highSkip) actions.push({tone:'warn',title:'Mejorar el inicio de '+highSkip+' reel(s)',text:'Tienen skip de 60% o más. Prueba una promesa visible antes del segundo 2.',jump:'analytics'});
@@ -675,7 +680,7 @@ function homeSection(){
     <div class="home-grid intelligence-home">
       <section class="panel span2">
         <div class="panel-head"><div><span class="eyebrow">PRIORIDAD</span><h2>Siguientes movimientos</h2></div><span class="freshness">${safe(contentSnap?ago(contentSnap.fetched_at):'Construyendo')}</span></div>
-        <div class="next-moves">${actions.map(a=>'<button class="'+safe(a.tone)+'" '+(a.post?'data-post-open="'+safe(a.post)+'"':'data-section-jump="'+safe(a.jump)+'"')+'><span></span><div><strong>'+safe(a.title)+'</strong><p>'+safe(a.text)+'</p></div><b>→</b></button>').join('')}</div>
+        <div class="next-moves">${actions.map(a=>'<button class="'+safe(a.tone)+'" '+(a.gamePrompt?'data-game-prompt="'+safe(a.gamePrompt)+'"':a.post?'data-post-open="'+safe(a.post)+'"':'data-section-jump="'+safe(a.jump)+'"')+'><span></span><div><strong>'+safe(a.title)+'</strong><p>'+safe(a.text)+'</p></div><b>→</b></button>').join('')}</div>
       </section>
       <section class="panel apparatus-health">
         <div class="panel-head"><div><span class="eyebrow">CAPACIDADES</span><h2>Estado del aparato</h2></div><button data-section-jump="connections">Gestionar</button></div>
@@ -1293,6 +1298,10 @@ function bind(){
   document.querySelectorAll('[data-mark-read]').forEach(btn=>btn.onclick=()=>markConversationRead(btn.dataset.markRead));
   document.querySelectorAll('[data-reply-form]').forEach(form=>form.onsubmit=e=>{e.preventDefault();sendConversationReply(form.dataset.replyForm);});
   document.querySelectorAll('[data-copy-prompt]').forEach(btn=>btn.onclick=async()=>{await navigator.clipboard?.writeText(btn.dataset.copyPrompt||'');toast('Prompt copiado.');});
+  document.querySelectorAll('[data-game-prompt]').forEach(btn=>btn.onclick=async()=>{
+    try{await navigator.clipboard?.writeText(btn.dataset.gamePrompt||'');toast('Prompt del juego copiado para continuar en ChatGPT.');}
+    catch{toast('No se pudo copiar el prompt.',true);}
+  });
   document.querySelectorAll('[data-activity-type]').forEach(btn=>btn.onclick=()=>{state.activityType=btn.dataset.activityType;renderApp();});
   $('#load-inbox')?.addEventListener('click',loadInbox);
   $('#load-content')?.addEventListener('click',loadContent);
