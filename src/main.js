@@ -950,10 +950,21 @@ function bind(){
     await loadBusiness({restore:true});
   });
   document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{
-    state.section=btn.dataset.section; renderApp(); persistWorkspace();
+    state.section=btn.dataset.section;
+    state.panelRefreshAt.delete([state.business?.id,state.activeAccount?.id||'source',state.section].join(':'));
+    renderApp(); persistWorkspace();
   });
-  document.querySelectorAll('[data-section-jump]').forEach(btn=>btn.onclick=()=>{state.section=btn.dataset.sectionJump;renderApp();persistWorkspace();});
-  document.querySelectorAll('[data-account]').forEach(btn=>btn.onclick=()=>{state.activeAccount=state.accounts.find(x=>x.id===btn.dataset.account);renderApp();persistWorkspace();});
+  document.querySelectorAll('[data-section-jump]').forEach(btn=>btn.onclick=()=>{
+    state.section=btn.dataset.sectionJump;
+    state.panelRefreshAt.delete([state.business?.id,state.activeAccount?.id||'source',state.section].join(':'));
+    renderApp();persistWorkspace();
+  });
+  document.querySelectorAll('[data-account]').forEach(btn=>btn.onclick=()=>{
+    state.activeAccount=state.accounts.find(x=>x.id===btn.dataset.account);
+    state.panelRefreshAt.clear();
+    state.selectedConversationId=null;
+    renderApp();persistWorkspace();
+  });
   $('#business-search')?.addEventListener('input',e=>{state.search=e.target.value;renderApp();$('#business-search')?.focus();});
   $('#quick-connect')?.addEventListener('click',openConnectionModal);
   $('#add-source')?.addEventListener('click',openConnectionModal);
