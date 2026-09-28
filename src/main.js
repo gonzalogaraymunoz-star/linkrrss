@@ -660,22 +660,41 @@ function issuePanel(title,snap){
 function emptyMemory(title,text){
   return `<div class="memory-state"><div class="memory-icon">·</div><div><span class="eyebrow">MEMORIA LINK</span><h2>${safe(title)}</h2><p>${safe(text)}</p></div></div>`;
 }
+
 function inboxSection(){
   if(!state.activeAccount) return noAccounts('Conversaciones');
   const snap=snapshotFor('inbox');
-  let body='';
-  if(!snap) body=emptyMemory('Preparando Inbox','LINK RRSS está construyendo la primera memoria de esta cuenta.');
-  else if(snap.status==='blocked'||snap.status==='error') body=issuePanel('Inbox no disponible',snap);
-  else {
-    const rows=snap.payload?.data||snap.payload?.conversations||[];
-    body=Array.isArray(rows)&&rows.length
-      ?`<div class="conversation-list">${rows.map(x=>`<button class="conversation-item"><span class="conversation-avatar">${safe((x.participantName||x.participantUsername||x.username||'?')[0]?.toUpperCase()||'?')}</span><div><strong>${safe(x.participantName||x.participantUsername||x.username||'Contacto')}</strong><p>${safe(x.lastMessage?.text||x.lastMessageText||x.preview||'Conversación')}</p></div><small>${safe(fmtDate(x.lastMessageAt||x.updatedAt))}</small></button>`).join('')}</div><div class="conversation-empty"><strong>Inbox persistente</strong><span>Última memoria: ${safe(ago(snap.fetched_at))}</span></div>`
-      :emptyMemory('Sin conversaciones sincronizadas','Zernio no devolvió conversaciones para esta cuenta.');
-  }
+  if(!snap) return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+emptyMemory('Preparando Inbox','LINK RRSS está construyendo la primera memoria de esta cuenta.');
+  if(snap.status==='blocked'||snap.status==='error') return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+issuePanel('Inbox no disponible',snap);
+  const rows=conversationRows().filter(c=>inPeriod(conversationDate(c)));
+  const selected=rows.find(c=>String(c.id||c._id)===String(state.selectedConversationId))||null;
+  const messages=selected?normalizeMessages(state.conversationMessages[String(selected.id||selected._id)]):[];
+  const selectedId=selected?String(selected.id||selected._id):'';
+  const selectedStatus=selected?conversationStatus(selectedId,selected):'';
+  const detail=!selected
+    ? '<div class="conversation-empty"><i data-lucide="message-circle"></i><strong>Selecciona una conversación</strong><span>Verás el hilo, estado, sugerencias y respuesta desde LINK.</span></div>'
+    : '<div class="conversation-detail">'+
+      '<header class="conversation-detail-head"><div class="conversation-person"><span class="conversation-avatar large">'+(selected.participantPicture?'<img src="'+safe(selected.participantPicture)+'" alt="">':safe((selected.participantName||selected.participantUsername||'?')[0]?.toUpperCase()||'?'))+'</span><div><strong>'+safe(selected.participantName||selected.participantUsername||'Contacto')+'</strong><small>'+safe(selected.participantUsername?'@'+selected.participantUsername:state.activeAccount.platform)+'</small></div></div>'+
+      '<div class="conversation-state"><label>ESTADO<select data-conversation-status="'+safe(selectedId)+'"><option value="pending" '+(selectedStatus==='pending'?'selected':'')+'>Por responder</option><option value="open" '+(selectedStatus==='open'?'selected':'')+'>En curso</option><option value="resolved" '+(selectedStatus==='resolved'?'selected':'')+'>Resuelta</option></select></label>'+
+      (Number(selected.unreadCount||0)>0?'<button data-mark-read="'+safe(selectedId)+'">Marcar leído</button>':'')+'</div></header>'+
+      '<div class="message-thread">'+(state.conversationLoading[selectedId]
+        ? '<div class="loading-panel">Cargando conversación…</div>'
+        : messages.length
+          ? messages.map(m=>'<div class="message-bubble '+(m.outgoing?'outgoing':'incoming')+'"><p>'+safe(m.text)+'</p><small>'+safe(fmtDate(m.date))+'</small></div>').join('')
+          : '<div class="thread-preview"><span>ÚLTIMO MENSAJE</span><p>'+safe(conversationText(selected))+'</p><small>Abriendo el hilo completo desde Zernio…</small></div>')+'</div>'+
+      '<div class="reply-assist"><span class="eyebrow">RESPUESTAS SUGERIDAS</span><div class="reply-suggestions">'+suggestedReplies(selected).map(x=>'<button data-suggest-reply="'+safe(x)+'">'+safe(x)+'</button>').join('')+'</div></div>'+
+      (state.canManage?'<form class="reply-composer" data-reply-form="'+safe(selectedId)+'"><textarea id="conversation-reply" rows="3" placeholder="Escribe una respuesta…"></textarea><div><small>Se enviará por '+safe(state.activeAccount.platform)+' mediante Zernio.</small><button class="primary" type="submit"><i data-lucide="send"></i> Enviar</button></div></form>':'')+
+      '</div>';
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">INBOX / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Conversaciones</h1><p>Memoria persistente de conversaciones. Se refresca automáticamente desde Zernio.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
-    <div id="inbox-live" class="conversation-layout">${body}</div>`;
+    <section class="section-heading compact"><div><span class="eyebrow">INBOX / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Conversaciones</h1><p>Lee, clasifica y responde desde LINK. ${rows.filter(x=>Number(x.unreadCount||0)>0).length} conversaciones tienen mensajes sin leer en este periodo.</p></div><span class="freshness">${safe(ago(snap.fetched_at))}</span></section>
+    <div class="conversation-layout interactive">
+      <div class="conversation-list">
+        ${rows.length?rows.map(x=>{const id=String(x.id||x._id);const st=conversationStatus(id,x);return '<button class="conversation-item '+(selectedId===id?'active':'')+'" data-conversation="'+safe(id)+'"><span class="conversation-avatar">'+(x.participantPicture?'<img src="'+safe(x.participantPicture)+'" alt="">':safe((x.participantName||x.participantUsername||'?')[0]?.toUpperCase()||'?'))+'</span><div><strong>'+safe(x.participantName||x.participantUsername||'Contacto')+'</strong><p>'+safe(conversationText(x))+'</p><span class="conversation-status '+st+'">'+statusLabelConversation(st)+(Number(x.unreadCount||0)>0?' · '+Number(x.unreadCount)+' nuevo':'')+'</span></div><small>'+safe(ago(conversationDate(x)))+'</small></button>'}).join(''):'<div class="list-empty">Sin conversaciones en este periodo.</div>'}
+      </div>
+      ${detail}
+    </div>`;
 }
+
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
   const snap=snapshotFor('content');
