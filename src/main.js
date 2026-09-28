@@ -43,7 +43,16 @@ const state = {
   snapshots: [],
   syncRuns: [],
   syncing: false,
-  businessLoadedId: null
+  businessLoadedId: null,
+  period: 'month',
+  selectedPostId: null,
+  selectedConversationId: null,
+  conversationMessages: {},
+  conversationLoading: {},
+  socialActivity: [],
+  panelRefreshAt: new Map(),
+  activityType: 'all',
+  activityCommentsLoadedKey: null
 };
 
 const nav = [
@@ -169,14 +178,19 @@ async function loadBusiness(opts={}){
   } else state.accounts=[];
 
   if(state.canManage){
-    const [ws,snaps,runs]=await Promise.all([
+    const accountIds=state.accounts.map(x=>x.id);
+    const [ws,snaps,runs,activity]=await Promise.all([
       db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
       db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
-      db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12)
+      db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12),
+      accountIds.length
+        ? db.from('link_rrss_activity_cache').select('*').in('account_id',accountIds).order('occurred_at',{ascending:false}).limit(300)
+        : Promise.resolve({data:[]})
     ]);
-    state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle'};
+    state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle',ui_state:{}};
     state.snapshots=snaps.data||[];
     state.syncRuns=runs.data||[];
+    state.socialActivity=activity.data||[];
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -186,7 +200,7 @@ async function loadBusiness(opts={}){
       state.activeAccount=remembered||state.accounts[0]||null;
     }
   } else {
-    state.workspace=null; state.snapshots=[]; state.syncRuns=[];
+    state.workspace=null; state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
       state.activeAccount=state.accounts[0]||null;
     }
@@ -225,6 +239,165 @@ function ago(v){
   if(ms<86400000)return 'Hace '+Math.round(ms/3600000)+' h';
   return fmtDate(v);
 }
+
+function periodStart(period=state.period, now=new Date()){
+  const d=new Date(now);
+  if(period==='day'){ d.setHours(0,0,0,0); return d; }
+  if(period==='week'){ d.setDate(d.getDate()-6); d.setHours(0,0,0,0); return d; }
+  if(period==='month'){ d.setDate(1); d.setHours(0,0,0,0); return d; }
+  d.setMonth(0,1); d.setHours(0,0,0,0); return d;
+}
+function inPeriod(value,period=state.period){
+  if(!value)return false;
+  const d=new Date(value);
+  return !Number.isNaN(d.getTime()) && d>=periodStart(period) && d<=new Date();
+}
+function periodControls(){
+  const labels={day:'Día',week:'Semana',month:'Mes',year:'Año'};
+  return '<div class="period-bar"><span>PERIODO</span>'+Object.entries(labels).map(([id,label])=>'<button data-period="'+id+'" class="'+(state.period===id?'active':'')+'">'+label+'</button>').join('')+'<small>Filtra por fecha de publicación o actividad</small></div>';
+}
+function compactNumber(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return '—';
+  return new Intl.NumberFormat('es-CL',{notation:n>=1000?'compact':'standard',maximumFractionDigits:1}).format(n);
+}
+function numberOf(value){const n=Number(value);return Number.isFinite(n)?n:0;}
+function contentRows(){
+  const snap=snapshotFor('content');
+  const rows=snap?.payload?.posts||snap?.payload?.data||[];
+  return Array.isArray(rows)?rows:[];
+}
+function rawPostMetrics(p={}){
+  return p.analytics||p.metrics||p.platforms?.[0]?.analytics||{};
+}
+function normalizePost(p={}){
+  const m=rawPostMetrics(p);
+  const id=String(p._id||p.id||p.platformPostId||p.platforms?.[0]?.platformPostId||'');
+  return {
+    raw:p,id,
+    text:p.content||p.message||p.caption||p.text||'Publicación sin texto',
+    date:p.publishedAt||p.createdTime||p.createdAt||p.scheduledFor||null,
+    mediaType:String(p.mediaProductType||p.mediaType||p.type||state.activeAccount?.platform||'post').toUpperCase(),
+    image:p.thumbnailUrl||p.thumbnail||p.picture||p.mediaItems?.[0]?.thumbnail||null,
+    url:p.platformPostUrl||p.permalink||p.platforms?.[0]?.platformPostUrl||null,
+    likes:numberOf(m.likes??p.likeCount??p.likes),
+    comments:numberOf(m.comments??p.commentCount??p.comments),
+    shares:numberOf(m.shares??p.shareCount??p.shares),
+    saves:numberOf(m.saves??p.saveCount??p.saves),
+    reach:numberOf(m.reach??p.reach),
+    impressions:numberOf(m.impressions??m.views??p.impressions),
+    views:numberOf(m.views??p.views??m.impressions),
+    engagementRate:numberOf(m.engagementRate??p.engagementRate),
+    skipRate:numberOf(m.reelsSkipRate??p.reelsSkipRate),
+    completionRate:numberOf(m.completionRate??p.completionRate),
+    avgWatchMs:numberOf(m.igReelsAvgWatchTime??p.igReelsAvgWatchTime),
+    duration:numberOf(m.videoDurationSeconds??p.videoDurationSeconds),
+    updated:m.lastUpdated||p.updatedAt||null
+  };
+}
+function filteredPosts(){
+  return contentRows().map(normalizePost).filter(p=>inPeriod(p.date));
+}
+function median(values=[]){
+  const v=values.filter(Number.isFinite).sort((a,b)=>a-b);
+  if(!v.length)return 0;
+  const m=Math.floor(v.length/2);
+  return v.length%2?v[m]:(v[m-1]+v[m])/2;
+}
+function postEngagement(p){return p.likes+p.comments+p.shares+p.saves;}
+function postAdvice(post,pool=filteredPosts()){
+  const ideas=[];
+  const ers=pool.map(p=>p.engagementRate).filter(x=>x>0);
+  const erMedian=median(ers);
+  if(post.skipRate>=60) ideas.push({title:'Abrir más fuerte',text:'El '+post.skipRate.toFixed(1)+'% de skip sugiere probar un gancho visual o textual antes del segundo 2.'});
+  else if(post.skipRate>0 && post.skipRate<45) ideas.push({title:'Conservar el inicio',text:'El skip está en '+post.skipRate.toFixed(1)+'%, señal para reutilizar el tipo de apertura en nuevas piezas.'});
+  if(post.engagementRate>0 && erMedian>0){
+    ideas.push(post.engagementRate>=erMedian
+      ? {title:'Patrón para repetir',text:'Engagement '+post.engagementRate.toFixed(2)+'%, sobre la mediana visible de '+erMedian.toFixed(2)+'%.'}
+      : {title:'Más reacción por alcance',text:'Engagement '+post.engagementRate.toFixed(2)+'%, bajo la mediana visible de '+erMedian.toFixed(2)+'%; prueba CTA o una idea más concreta.'});
+  }
+  if(post.saves+post.shares>post.comments && post.saves+post.shares>0) ideas.push({title:'Contenido que circula',text:'Guardados + compartidos superan comentarios. Conviene iterar este tema o formato.'});
+  if(post.reach>0 && postEngagement(post)===0) ideas.push({title:'Alcance sin respuesta',text:'La pieza llegó a personas pero no registra interacción: revisa promesa, cierre y llamada a la acción.'});
+  if(!ideas.length) ideas.push({title:'Seguir midiendo',text:'Todavía faltan señales suficientes para una recomendación específica en esta pieza.'});
+  return ideas.slice(0,3);
+}
+function conversationRows(){
+  const snap=snapshotFor('inbox');
+  const rows=snap?.payload?.data||snap?.payload?.conversations||[];
+  return Array.isArray(rows)?rows:[];
+}
+function conversationDate(c){return c?.updatedTime||c?.updatedAt||c?.lastMessageAt||null;}
+function conversationText(c){
+  return typeof c?.lastMessage==='string'?c.lastMessage:(c?.lastMessage?.text||c?.lastMessageText||c?.preview||'Conversación');
+}
+function conversationStatus(id,row){
+  const saved=state.workspace?.ui_state?.conversation_status?.[id];
+  if(saved)return saved;
+  if(Number(row?.unreadCount||0)>0)return 'pending';
+  if(String(row?.status||'').toLowerCase()==='closed')return 'resolved';
+  return 'open';
+}
+function statusLabelConversation(status){
+  return ({pending:'Por responder',open:'En curso',resolved:'Resuelta'})[status]||status;
+}
+function suggestedReplies(row){
+  const t=conversationText(row).toLowerCase();
+  if(/hora|abiert|cierr|hasta que|hasta q/.test(t)) return [
+    '¡Hola! Gracias por escribirnos. Te confirmo el horario de hoy enseguida. ¿Quieres venir al local o retirar un pedido?',
+    '¡Hola! Claro, te ayudo. ¿Para qué hora necesitas venir o retirar tu pedido?'
+  ];
+  if(/reserv|mesa|personas|pax/.test(t)) return [
+    '¡Hola! Claro. ¿Para qué día, hora y cuántas personas necesitas la reserva?',
+    '¡Hola! Te ayudo con la reserva. Envíame fecha, hora y cantidad de personas y lo revisamos.'
+  ];
+  if(/karaoke|música|musica|evento|tocan|artista/.test(t)) return [
+    '¡Hola! Sí, te puedo confirmar la programación. ¿Qué día estás pensando venir?',
+    '¡Hola! Gracias por escribirnos. Dime la fecha y te confirmamos qué actividad tenemos ese día.'
+  ];
+  if(/precio|carta|menu|menú|comida|pedido/.test(t)) return [
+    '¡Hola! Claro. ¿Qué te gustaría pedir o qué tipo de comida buscas? Te orientamos con la carta.',
+    '¡Hola! Te ayudo con eso. Dime qué producto o plato estás buscando y te confirmamos la información.'
+  ];
+  return [
+    '¡Hola! Gracias por escribirnos. ¿En qué te podemos ayudar?',
+    '¡Hola! Gracias por contactarnos. Cuéntame un poco más y te ayudamos por aquí.'
+  ];
+}
+function normalizeMessages(payload){
+  const list=Array.isArray(payload)?payload:(payload?.data||payload?.messages||[]);
+  if(!Array.isArray(list))return [];
+  return list.map((m,i)=>{
+    const text=typeof m==='string'?m:(m.text||m.message||m.content||m.body||'[Contenido adjunto]');
+    const direction=String(m.direction||m.type||m.senderType||'').toLowerCase();
+    const outgoing=m.isFromMe===true||m.fromMe===true||direction.includes('out')||direction==='sent'||direction==='account';
+    return {id:String(m.id||m._id||i),text,date:m.createdAt||m.createdTime||m.timestamp||m.sentAt||null,outgoing};
+  });
+}
+function socialActivityRows(){
+  const rows=[...(state.socialActivity||[])];
+  const known=new Set(rows.map(x=>x.activity_type+':'+x.external_id));
+  if(!rows.length){
+    for(const c of conversationRows()){
+      const d=conversationDate(c); if(!d)continue;
+      rows.push({activity_type:'message',external_id:String(c.id||c._id||d),occurred_at:d,payload:{
+        conversation_id:c.id||c._id,participant_name:c.participantName||c.participantUsername||'Contacto',
+        participant_username:c.participantUsername||null,message:conversationText(c),unread_count:Number(c.unreadCount||0),url:c.url||null
+      }});
+    }
+    for(const p of contentRows().map(normalizePost)){
+      if(!p.id||!p.date)continue;
+      rows.push({activity_type:'publication',external_id:p.id,occurred_at:p.date,payload:{post_id:p.id,text:p.text,url:p.url,metrics:rawPostMetrics(p.raw)}});
+    }
+  }
+  const comments=state.liveData.activityComments||[];
+  for(const c of comments){
+    const key='comment:'+c.external_id;
+    if(known.has(key))continue;
+    rows.push(c);known.add(key);
+  }
+  return rows.filter(x=>inPeriod(x.occurred_at)).sort((a,b)=>new Date(b.occurred_at)-new Date(a.occurred_at));
+}
+
 function syncStateLabel(){
   if(state.syncing)return 'Sincronizando';
   const s=state.workspace?.last_sync_status||'idle';
@@ -599,6 +772,7 @@ function renderApp(){
         ${topbar()}
         ${sectionNav()}
         ${accountStrip()}
+        ${state.section==='connections'?'':periodControls()}
         <div class="content">${bodySection()}</div>
       </main>
     </div>
