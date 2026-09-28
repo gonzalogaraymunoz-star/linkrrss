@@ -194,6 +194,169 @@ async function cacheActivity(admin: any, args: {
   await admin.from("link_rrss_activity_cache").insert(row);
 }
 
+
+function persistentPostRecord(post: any, externalAccountId: string) {
+  const platforms = Array.isArray(post?.platforms) ? post.platforms : [];
+  const target = platforms.find((p:any)=>{
+    const v=p?.accountId?._id || p?.accountId?.id || p?.accountId;
+    return String(v||"")===String(externalAccountId||"");
+  }) || platforms[0] || {};
+  const externalPostId = String(
+    target?.platformPostId || post?.platformPostId || post?.id || post?._id || ""
+  );
+  if (!externalPostId) return null;
+  const metrics = {
+    ...(target?.analytics || {}),
+    ...(post?.analytics || {}),
+    ...(post?.metrics || {})
+  } as any;
+  if (post?.likeCount !== undefined && metrics.likes === undefined) metrics.likes = Number(post.likeCount || 0);
+  if (post?.commentCount !== undefined && metrics.comments === undefined) metrics.comments = Number(post.commentCount || 0);
+  if (post?.shareCount !== undefined && metrics.shares === undefined) metrics.shares = Number(post.shareCount || 0);
+  if (post?.saveCount !== undefined && metrics.saves === undefined) metrics.saves = Number(post.saveCount || 0);
+  const publishedAt = post?.publishedAt || post?.createdTime || post?.createdAt || post?.scheduledFor || null;
+  return {
+    external_post_id: externalPostId,
+    platform_post_id: target?.platformPostId || post?.platformPostId || post?.id || null,
+    status: post?.status || target?.status || null,
+    media_type: post?.mediaProductType || post?.mediaType || post?.type || null,
+    content: post?.content || post?.message || post?.caption || post?.text || null,
+    thumbnail_url: post?.thumbnailUrl || post?.thumbnail || post?.picture || post?.mediaItems?.[0]?.thumbnail || null,
+    post_url: post?.platformPostUrl || post?.permalink || target?.platformPostUrl || null,
+    published_at: publishedAt,
+    scheduled_for: post?.scheduledFor || null,
+    metrics,
+    raw: post || {}
+  };
+}
+
+async function persistPosts(admin: any, account: any, posts: any[]) {
+  const normalized = (posts || []).map(p=>persistentPostRecord(p,account.external_account_id)).filter(Boolean) as any[];
+  if (!normalized.length) return { count:0 };
+  const ids = normalized.map(x=>x.external_post_id);
+  const { data: existing } = await admin.from("link_rrss_posts")
+    .select("external_post_id,metrics,content,thumbnail_url,post_url,published_at,scheduled_for,status,media_type")
+    .eq("account_id",account.id).in("external_post_id",ids);
+  const previous = new Map((existing || []).map((x:any)=>[String(x.external_post_id),x]));
+  const now = new Date().toISOString();
+  const records = normalized.map((x:any)=>{
+    const old:any = previous.get(String(x.external_post_id)) || {};
+    return {
+      account_id:account.id,
+      external_post_id:x.external_post_id,
+      platform_post_id:x.platform_post_id || old.platform_post_id || null,
+      status:x.status || old.status || null,
+      media_type:x.media_type || old.media_type || null,
+      content:x.content || old.content || null,
+      thumbnail_url:x.thumbnail_url || old.thumbnail_url || null,
+      post_url:x.post_url || old.post_url || null,
+      published_at:x.published_at || old.published_at || null,
+      scheduled_for:x.scheduled_for || old.scheduled_for || null,
+      metrics:{...(old.metrics||{}),...(x.metrics||{})},
+      raw:x.raw || {},
+      last_seen_at:now,
+      updated_at:now
+    };
+  });
+  const { data: saved, error } = await admin.from("link_rrss_posts")
+    .upsert(records,{onConflict:"account_id,external_post_id"})
+    .select("id,external_post_id,metrics");
+  if (error) throw error;
+  const day = now.slice(0,10);
+  const history=(saved||[]).filter((x:any)=>x?.id && x?.metrics && Object.keys(x.metrics).length).map((x:any)=>({
+    post_id:x.id,observed_on:day,observed_at:now,metrics:x.metrics
+  }));
+  if(history.length){
+    const {error:hError}=await admin.from("link_rrss_post_metric_history").upsert(history,{onConflict:"post_id,observed_on"});
+    if(hError) throw hError;
+  }
+  return {count:records.length};
+}
+
+async function persistConversations(admin:any, account:any, conversations:any[]){
+  if(!conversations?.length) return {count:0};
+  const now=new Date().toISOString();
+  const records=conversations.map((c:any)=>{
+    const id=String(c?.id || c?._id || "");
+    if(!id) return null;
+    return {
+      account_id:account.id,
+      external_conversation_id:id,
+      participant_id:c?.participantId || null,
+      participant_name:c?.participantName || c?.participantUsername || c?.username || null,
+      participant_username:c?.participantUsername || c?.username || null,
+      participant_picture:c?.participantPicture || null,
+      platform_url:c?.url || null,
+      status:c?.status || "active",
+      unread_count:Number(c?.unreadCount || 0),
+      last_message:typeof c?.lastMessage==="string" ? c.lastMessage : (c?.lastMessage?.text || c?.lastMessageText || c?.preview || null),
+      last_message_at:c?.updatedTime || c?.updatedAt || c?.lastMessageAt || null,
+      raw:c || {},
+      last_seen_at:now,
+      updated_at:now
+    };
+  }).filter(Boolean);
+  const {error}=await admin.from("link_rrss_conversations").upsert(records,{onConflict:"account_id,external_conversation_id"});
+  if(error) throw error;
+  return {count:records.length};
+}
+
+async function refreshAccountMemory(admin:any, accountId:string, historyPatch:any={}){
+  const [{count:postCount},{count:conversationCount},{data:bounds}] = await Promise.all([
+    admin.from("link_rrss_posts").select("id",{count:"exact",head:true}).eq("account_id",accountId),
+    admin.from("link_rrss_conversations").select("id",{count:"exact",head:true}).eq("account_id",accountId),
+    admin.from("link_rrss_posts").select("published_at").eq("account_id",accountId).not("published_at","is",null).order("published_at",{ascending:true})
+  ]);
+  const dates=(bounds||[]).map((x:any)=>x.published_at).filter(Boolean);
+  const now=new Date().toISOString();
+  const row:any={
+    account_id:accountId,
+    post_count:Number(postCount||0),
+    conversation_count:Number(conversationCount||0),
+    earliest_post_at:dates[0]||null,
+    latest_post_at:dates[dates.length-1]||null,
+    last_successful_sync_at:now,
+    updated_at:now,
+    ...historyPatch
+  };
+  const {error}=await admin.from("link_rrss_account_memory").upsert(row,{onConflict:"account_id"});
+  if(error) throw error;
+  return row;
+}
+
+function isoDay(d:Date){return d.toISOString().slice(0,10);}
+async function backfillAccountHistory(admin:any, apiKey:string, account:any, months=18){
+  const {data:memory}=await admin.from("link_rrss_account_memory").select("history_backfilled_at").eq("account_id",account.id).maybeSingle();
+  if(memory?.history_backfilled_at) return {skipped:true};
+  await admin.from("link_rrss_account_memory").upsert({
+    account_id:account.id,history_status:"backfilling",updated_at:new Date().toISOString()
+  },{onConflict:"account_id"});
+  let saved=0, successfulWindows=0;
+  const now=new Date();
+  for(let i=0;i<Math.max(1,Math.min(24,months));i++){
+    const end=new Date(now.getFullYear(),now.getMonth()-i+1,0,23,59,59,999);
+    if(end>now) end.setTime(now.getTime());
+    const start=new Date(end.getFullYear(),end.getMonth(),1,0,0,0,0);
+    const result=await safeFetch(apiKey,"/v1/analytics",{
+      accountId:account.external_account_id,
+      platform:account.platform,
+      fromDate:isoDay(start),
+      toDate:isoDay(end)
+    });
+    if(!result.ok) continue;
+    successfulWindows++;
+    const list=rows(result.data,["posts"]);
+    const persisted=await persistPosts(admin,account,list);
+    saved+=persisted.count;
+  }
+  const finished=new Date().toISOString();
+  await refreshAccountMemory(admin,account.id,{
+    history_backfilled_at:successfulWindows?finished:null,
+    history_status:successfulWindows?"ready":"partial"
+  });
+  return {saved,successful_windows:successfulWindows};
+}
+
 async function syncAccounts(admin: any, sourceId: string, apiKey: string, externalProfileId?: string | null) {
   const accountQuery = externalProfileId ? { profileId: externalProfileId } : {};
   const [accountsPayload, healthPayload] = await Promise.all([
@@ -332,6 +495,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
         if (!content.ok) summary.errors.push({module:"content",account:a.username,error:content.error});
         if (content.ok) {
           const contentRows = rows(content.data,["posts"]);
+          await persistPosts(admin,a,contentRows);
           for (const post of contentRows.slice(0,40)) {
             const postId = String(post?._id || post?.id || post?.platformPostId || post?.platforms?.[0]?.platformPostId || "");
             if (!postId) continue;
@@ -372,6 +536,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
         });
         summary.modules.analytics = (summary.modules.analytics||0)+1;
         if (!analytics.ok) summary.errors.push({module:"analytics",account:a.username,error:analytics.error});
+        if (analytics.ok) await persistPosts(admin,a,rows(analytics.data,["posts"]));
 
         const inbox = await safeFetch(apiKey,"/v1/inbox/conversations",{
           accountId:a.external_account_id,platform:a.platform,limit:30,sortOrder:"desc"
@@ -385,6 +550,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
         summary.modules.inbox = (summary.modules.inbox||0)+1;
         if (inbox.ok) {
           const conversations = rows(inbox.data,["conversations"]);
+          await persistConversations(admin,a,conversations);
           for (const c of conversations.slice(0,60)) {
             const conversationId = String(c?.id || c?._id || "");
             const stamp = String(c?.updatedTime || c?.updatedAt || c?.lastMessageAt || "");
@@ -425,6 +591,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
           businessId,sourceId:s.id,accountId:a.id,module:"capabilities",
           payload:capabilityPayload,status:"ok",ttlMinutes:30
         });
+        await refreshAccountMemory(admin,a.id);
       }
 
       const [wf,ca,seq] = await Promise.all([
@@ -573,6 +740,18 @@ Deno.serve(async (req: Request) => {
       if(!businessId) return json({ok:false,error:"business_id obligatorio."},400);
       const summary=await fullSync(admin,businessId,String(body.trigger||"manual"));
       return json({ok:true,summary});
+    }
+
+    if (action === "history.backfill") {
+      const sourceId=String(body.source_id||"");
+      const localAccountId=String(body.account_id||"");
+      const months=Number(body.months||18);
+      if(!sourceId || !localAccountId) return json({ok:false,error:"source_id y account_id son obligatorios."},400);
+      const {apiKey}=await readSourceSecret(admin,sourceId);
+      const {data:account,error:accountError}=await admin.from("link_rrss_accounts").select("*").eq("id",localAccountId).eq("source_id",sourceId).single();
+      if(accountError || !account) return json({ok:false,error:"Cuenta RRSS no encontrada."},404);
+      const result=await backfillAccountHistory(admin,apiKey,account,months);
+      return json({ok:true,result});
     }
 
     if (action === "workspace.touch") {
