@@ -37,7 +37,8 @@ const state = {
   liveData: {},
   loading: false,
   search: '',
-  canManage: false
+  canManage: false,
+  autoSyncAttempted: new Set()
 };
 
 const nav = [
@@ -154,7 +155,15 @@ async function loadBusiness(){
   state.liveData={};
   syncUrl();
   renderApp();
-  if(state.section==='home' && state.sources[0] && state.canManage) loadHomeLive();
+  if(state.canManage && state.sources.length && !state.accounts.length){
+    const source=state.sources[0];
+    if(!state.autoSyncAttempted.has(source.id)){
+      state.autoSyncAttempted.add(source.id);
+      setTimeout(()=>syncSource(source.id,{silent:true}),0);
+      return;
+    }
+  }
+  setTimeout(()=>loadCurrentSection(),0);
 }
 
 function syncUrl(){
@@ -415,6 +424,7 @@ function renderApp(){
     <div id="toast" class="toast hidden"></div>`;
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck}});
   bind();
+  setTimeout(()=>loadCurrentSection(),0);
 }
 
 function bind(){
@@ -451,6 +461,15 @@ function bind(){
   $('#load-content')?.addEventListener('click',loadContent);
   $('#load-analytics')?.addEventListener('click',loadAnalytics);
   $('#load-automations')?.addEventListener('click',loadAutomations);
+}
+
+async function loadCurrentSection(){
+  if(!state.canManage) return;
+  if(state.section==='home' && state.sources[0] && state.activeAccount) return loadHomeLive();
+  if(state.section==='inbox' && state.activeAccount) return loadInbox();
+  if(state.section==='content' && state.activeAccount) return loadContent();
+  if(state.section==='analytics' && state.activeAccount) return loadAnalytics();
+  if(state.section==='automations' && state.sources[0]) return loadAutomations();
 }
 
 function sourceForActiveAccount(){
@@ -692,11 +711,16 @@ async function startPlatformConnect(sourceId,platform){
   }catch(err){toast(err.message||String(err),true);}
 }
 
-async function syncSource(id){
+async function syncSource(id,opts={}){
   if(!state.canManage){openAdminLoginModal();return;}
-  toast('Sincronizando Zernio…');
-  try{await invokeZernio({action:'source.sync',source_id:id});toast('Conexión actualizada.');await loadBusiness();}
-  catch(e){toast(e.message||String(e),true);}
+  if(!opts.silent) toast('Sincronizando Zernio…');
+  try{
+    await invokeZernio({action:'source.sync',source_id:id});
+    if(!opts.silent) toast('Conexión actualizada.');
+    await loadBusiness();
+  }catch(e){
+    toast(e.message||String(e),true);
+  }
 }
 
 async function loadHomeLive(){
