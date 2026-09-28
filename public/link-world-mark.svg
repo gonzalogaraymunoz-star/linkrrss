@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <title>LINK WORLD</title>
+  <g stroke="#111111" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M46 18H30C23.373 18 18 23.373 18 30V46" stroke-width="6"/>
+    <path d="M82 18H98C104.627 18 110 23.373 110 30V46" stroke-width="6"/>
+    <path d="M18 82V98C18 104.627 23.373 110 30 110H46" stroke-width="6"/>
+    <path d="M82 110H98C104.627 110 110 104.627 110 98V82" stroke-width="6"/>
+    <circle cx="64" cy="64" r="27.5" stroke-width="3.25"/>
+  </g>
+</svg>
