@@ -370,28 +370,49 @@ function emptyMission(){
 
 function homeSection(){
   if(!state.profiles.length && !state.sources.length) return emptyMission();
+  const account=state.activeAccount||state.accounts[0]||null;
+  const content=account?snapshotFor('content',account.id):null;
+  const analytics=account?snapshotFor('analytics',account.id):null;
+  const inbox=account?snapshotFor('inbox',account.id):null;
+  const caps=account?snapshotFor('capabilities',account.id):null;
+  const posts=content?.payload?.posts||content?.payload?.data||[];
+  const aroot=analytics?.payload||{};
+  const overview=aroot.overview||{};
+  const inboxRows=inbox?.payload?.data||inbox?.payload?.conversations||[];
+  const inboxLabel=inbox?.status==='blocked'?'Bloqueado':Array.isArray(inboxRows)?inboxRows.length:'—';
   const healthy=state.accounts.filter(x=>x.status==='connected').length;
-  const warnings=state.sources.filter(x=>x.status==='attention'||x.last_error).length+state.accounts.filter(x=>['warning','error'].includes(x.status)).length;
+  const last=state.workspace?.last_full_sync_at;
+
   return `
-    <section class="hero">
-      <span class="eyebrow">APARATO RRSS / ${safe(state.business.name.toUpperCase())}</span>
-      <h1>Todo lo social, en un solo lugar.</h1>
-      <p>Zernio mueve las conexiones. LINK ordena la actividad, detecta señales y las devuelve al resto del negocio.</p>
+    <section class="hero rrss-command-hero">
+      <div>
+        <span class="eyebrow">APARATO RRSS / ${safe(state.business.name.toUpperCase())}</span>
+        <h1>La puerta social de ${safe(state.business.name)}.</h1>
+        <p>LINK RRSS recuerda lo último que sabe, abre con contexto y refresca Zernio en segundo plano.</p>
+      </div>
+      <div class="memory-orb ${state.syncing?'syncing':''}"><b>${safe(syncStateLabel())}</b><span>${safe(ago(last))}</span></div>
     </section>
     <section class="metric-row">
-      <article><strong>${state.sources.length}</strong><span>Fuentes Zernio</span></article>
-      <article><strong>${state.accounts.length}</strong><span>Cuentas detectadas</span></article>
-      <article><strong>${healthy}</strong><span>Conectadas</span></article>
-      <article><strong>${warnings}</strong><span>Alertas</span></article>
+      <article><strong>${state.accounts.length}</strong><span>Cuentas conectadas</span></article>
+      <article><strong>${overview.totalPosts??(Array.isArray(posts)?posts.length:'—')}</strong><span>Posts detectados</span></article>
+      <article><strong>${safe(inboxLabel)}</strong><span>Conversaciones</span></article>
+      <article><strong>${healthy}/${state.accounts.length||0}</strong><span>Salud de cuentas</span></article>
     </section>
     <div class="home-grid">
       <section class="panel span2">
-        <div class="panel-head"><div><span class="eyebrow">ACTIVIDAD</span><h2>Ahora</h2></div><button data-section-jump="activity">Ver todo</button></div>
-        <div id="home-live" class="activity-feed">${state.canManage?'<div class="skeleton long"></div><div class="skeleton"></div><div class="skeleton"></div>':'<div class="public-note"><strong>Vista abierta</strong><span>La actividad en vivo se habilita al entrar en modo administración.</span></div>'}</div>
+        <div class="panel-head"><div><span class="eyebrow">MEMORIA RECIENTE</span><h2>Qué está pasando</h2></div><span class="freshness">${safe(content?ago(content.fetched_at):'Construyendo')}</span></div>
+        <div class="activity-feed">
+          ${Array.isArray(posts)&&posts.length?posts.slice(0,5).map(p=>`<div class="activity-row"><span class="activity-type">${safe(p.mediaType||'Post')}</span><div><strong>${safe((p.message||p.content||p.caption||'Publicación sin texto').slice(0,120))}</strong><small>${safe(fmtDate(p.createdTime||p.publishedAt||p.createdAt))} · ♥ ${safe(p.likeCount??'—')} · ◌ ${safe(p.commentCount??'—')}</small></div></div>`).join(''):emptyMemory('Primera memoria en construcción','LINK RRSS está sincronizando la actividad de esta cuenta.')}
+        </div>
       </section>
-      <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">CONEXIONES</span><h2>Estado</h2></div><button data-section-jump="connections">Gestionar</button></div>
-        <div class="connection-mini">${state.sources.map(s=>`<div><span class="status-dot ${s.status==='healthy'?'ok':'warn'}"></span><div><strong>${safe(s.label)}</strong><small>${safe(s.provider)} · ${safe(fmtDate(s.last_synced_at))}</small></div></div>`).join('')||'<p>Sin fuentes.</p>'}</div>
+      <section class="panel apparatus-health">
+        <div class="panel-head"><div><span class="eyebrow">CAPACIDADES</span><h2>Estado del aparato</h2></div><button data-section-jump="connections">Gestionar</button></div>
+        <div class="capability-list">
+          <div><span class="status-dot ${account?.can_post===false?'warn':'ok'}"></span><b>Publicación</b><small>${account?.can_post===false?'Limitada':'Disponible'}</small></div>
+          <div><span class="status-dot ${account?.can_analytics===false?'warn':'ok'}"></span><b>Analytics</b><small>${account?.can_analytics===false?'Limitado':'Disponible'}</small></div>
+          <div><span class="status-dot ${caps?.payload?.inbox?'ok':inbox?.status==='blocked'?'warn':'pending'}"></span><b>Inbox</b><small>${inbox?.status==='blocked'?'Falta '+safe(snapshotError(inbox)?.required_group||'permiso'):caps?.payload?.inbox?'Disponible':'Pendiente'}</small></div>
+          <div><span class="status-dot ${state.sources[0]?.status==='healthy'?'ok':'warn'}"></span><b>Zernio</b><small>${safe(state.sources[0]?.status||'sin fuente')}</small></div>
+        </div>
       </section>
     </div>`;
 }
@@ -532,17 +553,26 @@ function automationsSection(){
     }).join('')}</div>`;
 }
 function activitySection(){
+  const runs=state.syncRuns||[];
+  const moduleState=state.workspace?.module_state||{};
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">SEÑALES / LINK WORLD</span><h1>Actividad</h1><p>Vista transversal para convertir actividad social en señales útiles para marketing, CRM, ventas y operación.</p></div></section>
-    <section class="panel">
-      <div class="activity-map">
-        <div><b>Red social</b><span>posts · DMs · comentarios · campañas</span></div><i>→</i>
-        <div><b>Zernio</b><span>normaliza conexión y eventos</span></div><i>→</i>
-        <div><b>LINK RRSS</b><span>interpreta actividad</span></div><i>→</i>
-        <div><b>LINK WORLD</b><span>misión · lead · aprendizaje · venta</span></div>
-      </div>
-      <div class="coming">La capa de señales queda preparada para alimentarse de webhooks Zernio en la siguiente iteración.</div>
-    </section>`;
+    <section class="section-heading compact"><div><span class="eyebrow">MEMORIA / TRAZABILIDAD</span><h1>Actividad</h1><p>Cada apertura, sincronización y bloqueo queda registrado. Esta es la memoria operativa del aparato RRSS.</p></div><span class="freshness">${safe(ago(state.workspace?.last_full_sync_at))}</span></section>
+    <div class="activity-dashboard">
+      <section class="panel">
+        <div class="panel-head"><div><span class="eyebrow">SINCRONIZACIONES</span><h2>Historial</h2></div></div>
+        <div class="sync-run-list">${runs.length?runs.map(r=>`<div class="sync-run"><span class="status-dot ${r.status==='ok'?'ok':r.status==='partial'?'warn':r.status==='error'?'warn':'pending'}"></span><div><strong>${safe(r.trigger||'sync')}</strong><small>${safe(fmtDate(r.started_at))} · ${safe(r.status)}</small></div><span>${safe(Array.isArray(r.modules)?r.modules.length:0)} módulos</span></div>`).join(''):'<p class="muted">Todavía no hay historial.</p>'}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><span class="eyebrow">DIAGNÓSTICO</span><h2>Último ciclo</h2></div></div>
+        <div class="diagnostic-grid">
+          <div><strong>${safe(moduleState.accounts??state.accounts.length)}</strong><span>cuentas</span></div>
+          <div><strong>${safe(moduleState.sources??state.sources.length)}</strong><span>fuentes</span></div>
+          <div><strong>${safe(moduleState.blocked?.length??0)}</strong><span>bloqueos</span></div>
+          <div><strong>${safe(moduleState.errors?.length??0)}</strong><span>errores</span></div>
+        </div>
+        ${moduleState.blocked?.length?`<div class="blocked-summary">${moduleState.blocked.map(x=>`<span>${safe(x.module)} · falta ${safe(x.required_group||'permiso')}</span>`).join('')}</div>`:''}
+      </section>
+    </div>`;
 }
 function noAccounts(title){return `<section class="empty-apparatus small"><span class="eyebrow">${safe(title.toUpperCase())}</span><h1>Primero conecta una cuenta.</h1><p>Ve a Conexiones y añade una fuente Zernio. LINK detectará automáticamente las cuentas disponibles.</p><button class="primary" data-section-jump="connections">Ir a Conexiones</button></section>`;}
 
