@@ -963,15 +963,156 @@ function bind(){
   $('#mobile-scrim')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   document.querySelectorAll('[data-source-sync]').forEach(btn=>btn.onclick=()=>syncSource(btn.dataset.sourceSync));
   document.querySelectorAll('[data-source-connect]').forEach(btn=>btn.onclick=()=>openNetworkModal(btn.dataset.sourceConnect));
+
+  document.querySelectorAll('[data-period]').forEach(btn=>btn.onclick=()=>{state.period=btn.dataset.period;renderApp();});
+  document.querySelectorAll('[data-post-open]').forEach(el=>{
+    el.onclick=()=>openPostDetail(el.dataset.postOpen);
+    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPostDetail(el.dataset.postOpen);}};
+  });
+  document.querySelectorAll('[data-conversation]').forEach(btn=>btn.onclick=()=>{
+    state.selectedConversationId=btn.dataset.conversation;
+    renderApp();
+  });
+  document.querySelectorAll('[data-suggest-reply]').forEach(btn=>btn.onclick=()=>{
+    const box=$('#conversation-reply'); if(box){box.value=btn.dataset.suggestReply||'';box.focus();}
+  });
+  document.querySelectorAll('[data-conversation-status]').forEach(sel=>sel.onchange=()=>saveConversationStatus(sel.dataset.conversationStatus,sel.value));
+  document.querySelectorAll('[data-mark-read]').forEach(btn=>btn.onclick=()=>markConversationRead(btn.dataset.markRead));
+  document.querySelectorAll('[data-reply-form]').forEach(form=>form.onsubmit=e=>{e.preventDefault();sendConversationReply(form.dataset.replyForm);});
+  document.querySelectorAll('[data-copy-prompt]').forEach(btn=>btn.onclick=async()=>{await navigator.clipboard?.writeText(btn.dataset.copyPrompt||'');toast('Prompt copiado.');});
+  document.querySelectorAll('[data-activity-type]').forEach(btn=>btn.onclick=()=>{state.activityType=btn.dataset.activityType;renderApp();});
   $('#load-inbox')?.addEventListener('click',loadInbox);
   $('#load-content')?.addEventListener('click',loadContent);
   $('#load-analytics')?.addEventListener('click',loadAnalytics);
   $('#load-automations')?.addEventListener('click',loadAutomations);
 }
 
+
 async function loadCurrentSection(){
-  return;
+  if(!state.canManage||!state.business||!state.sources.length)return;
+  const key=[state.business.id,state.activeAccount?.id||'source',state.section].join(':');
+  const last=state.panelRefreshAt.get(key)||0;
+  if(Date.now()-last>45000){
+    state.panelRefreshAt.set(key,Date.now());
+    await maybeAutoSync(true);
+    return;
+  }
+  if(state.section==='inbox'&&state.selectedConversationId&&!state.conversationMessages[state.selectedConversationId]){
+    await loadConversationMessages(state.selectedConversationId);
+  }
+  if(state.section==='activity') await loadActivityComments();
 }
+
+async function loadConversationMessages(conversationId){
+  const source=sourceForActiveAccount();
+  if(!source||!state.activeAccount||!conversationId)return;
+  state.conversationLoading[conversationId]=true;
+  try{
+    const out=await invokeZernio({
+      action:'zernio.get',
+      source_id:source.id,
+      path:'/v1/inbox/conversations/'+encodeURIComponent(conversationId)+'/messages',
+      query:{accountId:state.activeAccount.external_account_id,limit:100,sortOrder:'asc'}
+    });
+    state.conversationMessages[conversationId]=out.data||{};
+  }catch(e){
+    state.conversationMessages[conversationId]={messages:[],error:e.message||String(e)};
+    toast('No se pudo abrir el hilo completo: '+(e.message||String(e)),true);
+  }finally{
+    state.conversationLoading[conversationId]=false;
+    renderApp();
+  }
+}
+
+async function saveConversationStatus(conversationId,status){
+  if(!state.canManage||!state.business)return;
+  const ui={...(state.workspace?.ui_state||{})};
+  ui.conversation_status={...(ui.conversation_status||{}),[conversationId]:status};
+  state.workspace={...(state.workspace||{}),ui_state:ui};
+  renderApp();
+  try{await invokeZernio({action:'workspace.touch',business_id:state.business.id,ui_state:ui});}
+  catch{toast('No se pudo guardar el estado.',true);}
+}
+
+async function markConversationRead(conversationId){
+  const source=sourceForActiveAccount();
+  if(!source||!state.activeAccount)return;
+  try{
+    await invokeZernio({action:'inbox.read',source_id:source.id,conversation_id:conversationId,account_id:state.activeAccount.external_account_id});
+    toast('Conversación marcada como leída.');
+    state.panelRefreshAt.delete([state.business.id,state.activeAccount.id,'inbox'].join(':'));
+    await maybeAutoSync(true);
+  }catch(e){toast(e.message||String(e),true);}
+}
+
+async function sendConversationReply(conversationId){
+  const source=sourceForActiveAccount(),box=$('#conversation-reply');
+  const message=box?.value?.trim();
+  if(!source||!state.activeAccount||!message)return;
+  const form=document.querySelector('[data-reply-form="'+conversationId+'"]');
+  const submit=form?.querySelector('button[type="submit"]');
+  if(submit)submit.disabled=true;
+  try{
+    await invokeZernio({
+      action:'inbox.send',
+      source_id:source.id,
+      conversation_id:conversationId,
+      account_id:state.activeAccount.external_account_id,
+      message,
+      idempotency_key:'link-rrss-'+conversationId+'-'+Date.now()
+    });
+    toast('Respuesta enviada.');
+    if(box)box.value='';
+    delete state.conversationMessages[conversationId];
+    await loadConversationMessages(conversationId);
+    await saveConversationStatus(conversationId,'open');
+  }catch(e){toast(e.message||String(e),true);}
+  finally{if(submit)submit.disabled=false;}
+}
+
+async function loadActivityComments(){
+  if(!state.activeAccount)return;
+  const posts=filteredPosts().slice(0,6);
+  const key=state.activeAccount.id+':'+state.period+':'+posts.map(p=>p.id).join(',');
+  if(state.activityCommentsLoadedKey===key)return;
+  state.activityCommentsLoadedKey=key;
+  const source=sourceForActiveAccount();
+  if(!source)return;
+  const events=[];
+  for(const p of posts){
+    const platformPostId=String(p.raw?.platforms?.[0]?.platformPostId||p.raw?.platformPostId||p.id||'');
+    if(!platformPostId)continue;
+    try{
+      const out=await invokeZernio({
+        action:'zernio.get',
+        source_id:source.id,
+        path:'/v1/inbox/comments/'+encodeURIComponent(platformPostId),
+        query:{accountId:state.activeAccount.external_account_id,limit:50}
+      });
+      const comments=Array.isArray(out.data)?out.data:(out.data?.comments||out.data?.data||[]);
+      if(!Array.isArray(comments))continue;
+      for(const c of comments){
+        const occurred=c.createdAt||c.createdTime||c.timestamp||c.publishedAt||null;
+        if(!occurred)continue;
+        events.push({
+          activity_type:'comment',
+          external_id:String(c.id||c._id||platformPostId+':'+occurred),
+          occurred_at:occurred,
+          payload:{
+            post_id:platformPostId,
+            author_name:c.authorName||c.user?.name||c.from?.name||c.username||c.author||'Comentario',
+            author_username:c.authorUsername||c.user?.username||c.from?.username||null,
+            text:c.text||c.message||c.content||'Comentario',
+            url:p.url||null
+          }
+        });
+      }
+    }catch{}
+  }
+  state.liveData.activityComments=events;
+  renderApp();
+}
+
 
 function sourceForActiveAccount(){
   if(!state.activeAccount) return null;
