@@ -762,27 +762,57 @@ function openPostDetail(postId){
   $('[data-copy-post-insight]')?.addEventListener('click',async e=>{await navigator.clipboard?.writeText(e.currentTarget.dataset.copyPostInsight||'');toast('Aprendizaje copiado.');});
 }
 
+
 function analyticsSection(){
   if(!state.activeAccount) return noAccounts('Analytics');
   const snap=snapshotFor('analytics');
-  if(snap?.status==='blocked'||snap?.status==='error') return `<section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1></div></section>${issuePanel('Analytics no disponible',snap)}`;
-  const root=snap?.payload||{}, rows=root.posts||root.data||[], overview=root.overview||{};
-  const sum=(key)=>Array.isArray(rows)?rows.reduce((a,p)=>a+Number(p?.metrics?.[key]??p?.[key]??0),0):0;
-  const metrics=[
-    ['Posts',overview.totalPosts??(Array.isArray(rows)?rows.length:'—')],
-    ['Alcance',overview.reach ?? (sum('reach') || '—')],
-    ['Impresiones',overview.impressions ?? (sum('impressions') || '—')],
-    ['Interacciones',overview.engagement ?? ((sum('likes')+sum('comments')+sum('shares')+sum('saves')) || '—')]
-  ];
-  const top=Array.isArray(rows)?rows.slice(0,5):[];
+  const posts=filteredPosts();
+  const total=(key)=>posts.reduce((a,p)=>a+numberOf(p[key]),0);
+  const interactions=posts.reduce((a,p)=>a+postEngagement(p),0);
+  const reach=total('reach');
+  const views=posts.reduce((a,p)=>a+numberOf(p.views||p.impressions),0);
+  const erValues=posts.map(p=>p.engagementRate).filter(x=>x>0);
+  const avgEr=erValues.length?erValues.reduce((a,b)=>a+b,0)/erValues.length:(reach?interactions/reach*100:0);
+  const skipValues=posts.map(p=>p.skipRate).filter(x=>x>0);
+  const avgSkip=skipValues.length?skipValues.reduce((a,b)=>a+b,0)/skipValues.length:0;
+  const watchValues=posts.map(p=>p.avgWatchMs).filter(x=>x>0);
+  const avgWatch=watchValues.length?(watchValues.reduce((a,b)=>a+b,0)/watchValues.length/1000):0;
+  const best=[...posts].sort((a,b)=>(b.engagementRate-a.engagementRate)||(b.reach-a.reach)).slice(0,6);
+  const formats={};
+  for(const p of posts){const k=p.mediaType||'POST';(formats[k] ||= []).push(p.engagementRate||0);}
+  const formatEntries=Object.entries(formats).map(([k,v])=>[k,v.reduce((a,b)=>a+b,0)/v.length,v.length]).sort((a,b)=>b[1]-a[1]);
+  const signals=[];
+  if(formatEntries[0])signals.push({title:'Formato a profundizar',text:formatEntries[0][0]+' promedia '+formatEntries[0][1].toFixed(2)+'% de engagement en '+formatEntries[0][2]+' pieza(s).'});
+  if(avgSkip)signals.push({title:avgSkip>=60?'Problema de retención':'Retención observable',text:'Skip promedio de reels: '+avgSkip.toFixed(1)+'%. '+(avgSkip>=60?'Prioriza aperturas más rápidas y promesa visible al inicio.':'Mantén los ganchos que reducen el abandono y pruébalos en nuevas piezas.')});
+  const saves=total('saves'),shares=total('shares'),comments=total('comments');
+  signals.push({title:'Tipo de reacción',text:(saves+shares>comments?'Guardados + compartidos ('+(saves+shares)+') superan comentarios ('+comments+'): conviene crear contenido que la gente quiera conservar o enviar.':'Los comentarios tienen peso relativo: abre más conversación y responde rápido para convertirla en relación.')});
+  if(!posts.length)signals.push({title:'Sin muestra',text:'No hay publicaciones dentro del periodo seleccionado. Cambia el filtro para comparar.'});
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1><p>Última memoria analítica guardada en LINK RRSS.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
-    <div id="analytics-live" class="analytics-shell">
-      <div class="metric-row">${metrics.map(([k,v])=>`<article><strong>${safe(v)}</strong><span>${safe(k)}</span></article>`).join('')}</div>
-      <section class="panel"><div class="panel-head"><div><span class="eyebrow">CONTENIDO MEDIDO</span><h2>Últimas piezas</h2></div></div>
-      <div class="analytics-list">${top.length?top.map(p=>`<div><strong>${safe((p.content||p.message||p.caption||'Publicación').slice(0,90))}</strong><span>Alcance ${safe(p.metrics?.reach??p.reach??'—')} · Likes ${safe(p.metrics?.likes??p.likes??'—')} · Comentarios ${safe(p.metrics?.comments??p.comments??'—')}</span></div>`).join(''):'<p class="muted">Sin detalle de piezas todavía.</p>'}</div></section>
+    <section class="section-heading compact"><div><span class="eyebrow">ANALYTICS / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Rendimiento</h1><p>El tablero se construye desde cada publicación, no desde números aislados. Muestra solo lo que la fuente realmente entregó.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Memoria de contenido')}</span></section>
+    <div class="analytics-command">
+      <div class="metric-row analytics-metrics">
+        <article><strong>${posts.length}</strong><span>Publicaciones</span></article>
+        <article><strong>${compactNumber(reach)}</strong><span>Alcance acumulado</span></article>
+        <article><strong>${compactNumber(views)}</strong><span>Vistas / impresiones</span></article>
+        <article><strong>${compactNumber(interactions)}</strong><span>Interacciones</span></article>
+        <article><strong>${avgEr?avgEr.toFixed(2)+'%':'—'}</strong><span>Engagement medio</span></article>
+        <article><strong>${avgSkip?avgSkip.toFixed(1)+'%':'—'}</strong><span>Skip medio reels</span></article>
+        <article><strong>${avgWatch?avgWatch.toFixed(1)+' s':'—'}</strong><span>Watch medio</span></article>
+        <article><strong>${compactNumber(saves+shares)}</strong><span>Guardados + compartidos</span></article>
+      </div>
+      <div class="analytics-grid">
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">PIEZAS CLAVE</span><h2>Qué contenido está moviendo la cuenta</h2></div></div>
+          <div class="ranked-posts">${best.length?best.map((p,i)=>'<button data-post-open="'+safe(p.id)+'"><span class="rank">'+String(i+1).padStart(2,'0')+'</span><div><strong>'+safe(String(p.text).slice(0,90))+'</strong><small>'+safe(p.mediaType)+' · '+compactNumber(p.reach)+' alcance · '+(p.engagementRate?p.engagementRate.toFixed(2)+'% ER':'ER —')+'</small></div><span>→</span></button>').join(''):'<p class="muted">Sin piezas en el periodo.</p>'}</div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">LECTURA LINK</span><h2>Señales para avanzar</h2></div></div>
+          <div class="insight-grid">${signals.slice(0,3).map(s=>'<article><strong>'+safe(s.title)+'</strong><p>'+safe(s.text)+'</p></article>').join('')}</div>
+        </section>
+      </div>
     </div>`;
 }
+
 function automationsSection(){
   const source=sourceForActiveAccount()||state.sources[0];
   if(!source) return noAccounts('Automatizaciones');
