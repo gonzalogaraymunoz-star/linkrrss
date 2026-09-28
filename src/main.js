@@ -99,8 +99,11 @@ async function handleZernioReturn(){
   if(error){
     setTimeout(()=>toast('Zernio: '+(params.get('error_message')||error),true),100);
   }else if(sourceId && state.canManage){
-    try{await invokeZernio({action:'source.sync',source_id:sourceId});setTimeout(()=>toast('Cuenta conectada y sincronizada.'),100);}
-    catch(e){setTimeout(()=>toast(e.message||String(e),true),100);}
+    try{
+      await invokeZernio({action:'source.sync',source_id:sourceId});
+      if(state.business?.id) await invokeZernio({action:'sync.business',business_id:state.business.id,trigger:'oauth_return'});
+      setTimeout(()=>toast('Cuenta conectada, recordada y sincronizada.'),100);
+    }catch(e){setTimeout(()=>toast(e.message||String(e),true),100);}
   }
   ['zernio_return','source','connected','profileId','accountId','username','error','error_message','request_id','stage','platform'].forEach(k=>params.delete(k));
   const next=location.pathname+(params.toString()?'?'+params.toString():'');
