@@ -48,6 +48,7 @@ const state = {
   period: 'month',
   periodOffset: 0,
   persistentPosts: [],
+  publicationDrafts: [],
   persistentConversations: [],
   accountMemory: [],
   historyBackfillRequested: new Set(),
@@ -60,7 +61,8 @@ const state = {
   activityType: 'all',
   activityCommentsLoadedKey: null,
   analyticsTab: 'overview',
-  analyticsSort: 'recent'
+  analyticsSort: 'recent',
+  autoOpenedDraft: null
 };
 
 const nav = [
@@ -203,7 +205,7 @@ async function loadBusiness(opts={}){
 
   const accountIds=state.accounts.map(x=>x.id);
   if(state.canManage){
-    const [ws,snaps,runs,activity,posts,conversations,memory]=await Promise.all([
+    const [ws,snaps,runs,activity,posts,conversations,memory,drafts]=await Promise.all([
       db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
       db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
       db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12),
@@ -218,6 +220,9 @@ async function loadBusiness(opts={}){
         : Promise.resolve({data:[]}),
       accountIds.length
         ? db.from('link_rrss_account_memory').select('*').in('account_id',accountIds)
+        : Promise.resolve({data:[]}),
+      accountIds.length
+        ? db.from('link_rrss_publication_drafts').select('*').eq('business_id',id).in('account_id',accountIds).order('created_at',{ascending:false}).limit(200)
         : Promise.resolve({data:[]})
     ]);
     state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle',ui_state:{}};
@@ -227,6 +232,7 @@ async function loadBusiness(opts={}){
     state.persistentPosts=posts.data||[];
     state.persistentConversations=conversations.data||[];
     state.accountMemory=memory.data||[];
+    state.publicationDrafts=drafts.data||[];
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -240,7 +246,7 @@ async function loadBusiness(opts={}){
       db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
       db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
     ]);
-    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[];
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[];
     state.persistentPosts=posts.data||[];
     state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -260,6 +266,14 @@ async function loadBusiness(opts={}){
   state.liveData={};
   syncUrl();
   renderApp();
+
+  const requestedDraft=new URLSearchParams(location.search).get('draft');
+  if(state.canManage && requestedDraft && state.publicationDrafts.some(d=>d.id===requestedDraft) && state.autoOpenedDraft!==requestedDraft){
+    state.autoOpenedDraft=requestedDraft;
+    state.section='content';
+    renderApp();
+    setTimeout(()=>openPublicationDraftApproval(requestedDraft),30);
+  }
 
   if(state.canManage){
     persistWorkspace();
@@ -949,6 +963,188 @@ function jumpToCalendarMonth(monthIndex,year=periodRange('year',state.periodOffs
   renderApp();
 }
 
+
+function publicationDraftRows(){
+  return (state.publicationDrafts||[]).filter(d=>!state.activeAccount||d.account_id===state.activeAccount.id);
+}
+function publicationDraftStatusLabel(status){
+  return ({
+    draft:'Borrador',
+    ready_for_review:'Esperando autorización',
+    approved:'Autorizado',
+    publishing:'Publicando',
+    published:'Publicado',
+    error:'Error',
+    cancelled:'Cancelado'
+  })[status]||status;
+}
+function publicationQueueMarkup(){
+  if(!state.canManage||!state.activeAccount)return '';
+  const all=publicationDraftRows();
+  const pending=all.filter(d=>['draft','ready_for_review','approved','publishing','error'].includes(d.status));
+  if(!pending.length) return '<section class="publication-queue empty"><div><span class="eyebrow">COLA DE PUBLICACIÓN</span><h2>Sin piezas esperando autorización</h2><p>Las instrucciones creadas desde ChatGPT aparecerán aquí de forma persistente.</p></div></section>';
+  return '<section class="publication-queue">'+
+    '<div class="publication-queue-head"><div><span class="eyebrow">COLA DE PUBLICACIÓN</span><h2>'+pending.length+' pieza'+(pending.length===1?'':'s')+' esperando acción</h2><p>ChatGPT prepara. LINKRRSS conserva. Tú autorizas el envío a Zernio.</p></div><span class="queue-badge">'+pending.filter(d=>d.status==='ready_for_review').length+' por autorizar</span></div>'+
+    '<div class="publication-queue-list">'+pending.map(d=>{
+      const media=d.media_name||d.media_url?'Media preparada':'Media pendiente';
+      return '<article class="publication-draft '+safe(d.status)+'">'+
+        '<div class="draft-status-row"><span class="draft-status">'+safe(publicationDraftStatusLabel(d.status))+'</span><small>'+safe(fmtDate(d.created_at))+'</small></div>'+
+        '<p>'+safe(String(d.caption||'Sin copy').slice(0,340))+'</p>'+
+        '<div class="draft-meta"><span>'+safe(d.post_type||'post')+'</span><span>'+safe(media)+'</span>'+(d.media_name?'<span>'+safe(d.media_name)+'</span>':'')+'</div>'+
+        (d.error?'<div class="draft-error">'+safe(d.error)+'</div>':'')+
+        '<div class="draft-actions">'+
+          (['ready_for_review','draft','error'].includes(d.status)?'<button class="primary" data-draft-approve="'+safe(d.id)+'">Autorizar publicación</button>':'')+
+          (['approved','publishing'].includes(d.status)?'<button disabled>Procesando…</button>':'')+
+          '<button class="auth-secondary" data-draft-cancel="'+safe(d.id)+'">Cancelar</button>'+
+        '</div>'+
+      '</article>';
+    }).join('')+'</div></section>';
+}
+
+async function cancelPublicationDraft(draftId){
+  if(!state.canManage)return;
+  const {error}=await db.from('link_rrss_publication_drafts')
+    .update({status:'cancelled',updated_at:new Date().toISOString()})
+    .eq('id',draftId);
+  if(error){toast(error.message||String(error),true);return;}
+  state.publicationDrafts=(state.publicationDrafts||[]).map(d=>d.id===draftId?{...d,status:'cancelled',updated_at:new Date().toISOString()}:d);
+  renderApp();
+  toast('Borrador cancelado.');
+}
+
+function openPublicationDraftApproval(draftId){
+  if(!state.canManage){openAdminLoginModal();return;}
+  const draft=(state.publicationDrafts||[]).find(d=>d.id===draftId);
+  if(!draft)return;
+  const account=state.accounts.find(a=>a.id===draft.account_id)||state.activeAccount;
+  if(!account)return;
+
+  const needsFile=!draft.media_url;
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal composer-modal approval-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <span class="eyebrow">AUTORIZACIÓN / ${safe(String(account.platform||'').toUpperCase())}</span>
+        <h2>Revisar antes de publicar</h2>
+        <p>Esta pieza fue preparada fuera de LINKRRSS y quedó guardada como borrador. Nada se publica hasta que autorices aquí.</p>
+        <div class="approval-target"><span>Destino</span><strong>@${safe(account.username||account.display_name||'cuenta')}</strong></div>
+        <form id="draft-approval-form">
+          ${needsFile?`<label>Pieza ${draft.media_name?'<small>Esperada: '+safe(draft.media_name)+'</small>':''}
+            <input id="draft-media" type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime" required>
+          </label>`:'<div class="security-note"><strong>Media lista</strong><br>LINKRRSS ya tiene una URL persistida para esta pieza.</div>'}
+          <label>Pie de publicación
+            <textarea id="draft-caption" rows="8" maxlength="2200" required>${safe(draft.caption||'')}</textarea>
+          </label>
+          <div class="security-note">Al autorizar, LINKRRSS enviará esta versión exacta a Zernio. Zernio publica en la cuenta conectada y el resultado vuelve a esta ficha.</div>
+          <button class="primary wide" id="draft-publish-submit" type="submit">Autorizar y publicar</button>
+        </form>
+        <div id="draft-publish-status" class="connect-status hidden"></div>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+
+  $('#draft-approval-form').onsubmit=async e=>{
+    e.preventDefault();
+    const caption=String($('#draft-caption').value||'').trim();
+    const file=$('#draft-media')?.files?.[0]||null;
+    const status=$('#draft-publish-status');
+    const submit=$('#draft-publish-submit');
+    if(!caption)return;
+    if(needsFile&&!file){
+      status.classList.remove('hidden');status.classList.add('error');status.textContent='Adjunta la pieza antes de autorizar.';
+      return;
+    }
+    submit.disabled=true;
+    status.classList.remove('hidden','error');
+    status.textContent='Autorizando en LINKRRSS…';
+    try{
+      const approvedAt=new Date().toISOString();
+      const approvedBy=state.session?.user?.id||null;
+      let mediaUrl=draft.media_url||null;
+
+      const {error:approveError}=await db.from('link_rrss_publication_drafts').update({
+        status:'approved',
+        caption,
+        approved_at:approvedAt,
+        approved_by:approvedBy,
+        error:null,
+        updated_at:approvedAt
+      }).eq('id',draft.id);
+      if(approveError)throw approveError;
+
+      if(!mediaUrl){
+        status.textContent='Subiendo pieza mediante LINKRRSS → Zernio…';
+        if(file.size>25*1024*1024)throw new Error('El archivo supera 25 MB.');
+        const dataUrl=await new Promise((resolve,reject)=>{
+          const reader=new FileReader();
+          reader.onload=()=>resolve(String(reader.result||''));
+          reader.onerror=()=>reject(reader.error||new Error('No se pudo leer el archivo.'));
+          reader.readAsDataURL(file);
+        });
+        const uploaded=await invokeZernio({
+          action:'media.upload',
+          source_id:draft.source_id,
+          filename:file.name||draft.media_name||('linkrrss-'+Date.now()),
+          content_type:file.type||draft.media_mime||'image/jpeg',
+          base64_data:dataUrl
+        });
+        mediaUrl=uploaded.public_url;
+        await db.from('link_rrss_publication_drafts').update({
+          media_url:mediaUrl,
+          media_name:file.name||draft.media_name,
+          media_mime:file.type||draft.media_mime,
+          status:'publishing',
+          updated_at:new Date().toISOString()
+        }).eq('id',draft.id);
+      }else{
+        await db.from('link_rrss_publication_drafts').update({
+          status:'publishing',
+          updated_at:new Date().toISOString()
+        }).eq('id',draft.id);
+      }
+
+      status.textContent='Publicando mediante Zernio…';
+      const published=await invokeZernio({
+        action:'post.publish',
+        source_id:draft.source_id,
+        account_id:draft.account_id,
+        content:caption,
+        media_url:mediaUrl,
+        media_type:(file?.type||draft.media_mime||'').startsWith('video/')?'video':'image',
+        idempotency_key:'linkrrss-draft-'+draft.id
+      });
+      const finished=new Date().toISOString();
+      const {error:finishError}=await db.from('link_rrss_publication_drafts').update({
+        status:'published',
+        caption,
+        media_url:mediaUrl,
+        published_at:finished,
+        post_url:published.platform_post_url||null,
+        external_post_id:published.post_id||null,
+        error:null,
+        updated_at:finished
+      }).eq('id',draft.id);
+      if(finishError)throw finishError;
+
+      await invokeZernio({action:'sync.business',business_id:draft.business_id,trigger:'draft_approval'}).catch(()=>null);
+      await loadBusiness({restore:true});
+      const target=new URL(location.href);target.searchParams.delete('draft');history.replaceState({},'',target);
+      status.innerHTML=published.platform_post_url
+        ? 'Publicado correctamente · <a href="'+safe(published.platform_post_url)+'" target="_blank" rel="noreferrer">Abrir publicación ↗</a>'
+        : 'Zernio confirmó la publicación.';
+      toast('Publicación autorizada y enviada.');
+      submit.textContent='Publicado';
+    }catch(error){
+      const message=error.message||'No se pudo publicar.';
+      await db.from('link_rrss_publication_drafts').update({
+        status:'error',error:message,updated_at:new Date().toISOString()
+      }).eq('id',draft.id).catch(()=>null);
+      status.classList.add('error');status.textContent=message;submit.disabled=false;
+    }
+  };
+}
+
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
   const snap=snapshotFor('content');
@@ -975,7 +1171,8 @@ function contentSection(){
     </article>`;
   }).join(''):emptyMemory('Sin publicaciones en este periodo','Cambia el filtro o sincroniza la cuenta para ampliar la memoria.');
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><div class="content-heading-actions">${state.canManage&&state.activeAccount?.can_post!==false?'<button class="primary" id="new-post">＋ Publicar</button>':''}<span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></div></section>
+    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><div class="content-heading-actions">${state.canManage&&state.activeAccount?.can_post!==false?'<button class="primary" id="new-post">＋ Publicación manual</button>':''}<span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></div></section>
+    ${publicationQueueMarkup()}
     <div id="content-live" class="content-grid">${body}</div>`;
 }
 
@@ -1362,6 +1559,8 @@ function bind(){
   $('#admin-empty')?.addEventListener('click',openAdminLoginModal);
   $('#admin-connections')?.addEventListener('click',openAdminLoginModal);
   $('#new-post')?.addEventListener('click',openPostComposer);
+  document.querySelectorAll('[data-draft-approve]').forEach(btn=>btn.onclick=()=>openPublicationDraftApproval(btn.dataset.draftApprove));
+  document.querySelectorAll('[data-draft-cancel]').forEach(btn=>btn.onclick=()=>cancelPublicationDraft(btn.dataset.draftCancel));
   $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
   $('#back-world')?.addEventListener('click',()=>{location.href=LINK_WORLD_URL+(state.business?('?business='+encodeURIComponent(state.business.id)):'');});
