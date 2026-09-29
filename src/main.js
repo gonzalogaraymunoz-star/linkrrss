@@ -1570,6 +1570,112 @@ function toast(text,error=false){
   setTimeout(()=>el.classList.add('hidden'),3500);
 }
 
+
+async function handleOAuthConsentPage(){
+  const root=$('#app');
+  const params=new URLSearchParams(location.search);
+  const authorizationId=params.get('authorization_id');
+
+  const shell=(inner)=>{ root.innerHTML=`
+    <main class="auth-shell">
+      <section class="auth-card oauth-consent-card">
+        <span class="eyebrow">LINK RRSS · ACCESO SEGURO</span>
+        ${inner}
+      </section>
+    </main>`; };
+
+  if(!authorizationId){
+    shell('<h1>Solicitud OAuth incompleta</h1><p>Falta <code>authorization_id</code>. Vuelve a iniciar la conexión desde ChatGPT.</p>');
+    return;
+  }
+
+  async function requireSession(){
+    const {data:{session}}=await db.auth.getSession();
+    if(session)return true;
+
+    shell(`
+      <h1>Autorizar ChatGPT en LINKRRSS</h1>
+      <p>Inicia sesión con tu cuenta LINK. La autorización no entrega a ChatGPT tus credenciales de Zernio ni de Instagram.</p>
+      <form id="oauth-login-form">
+        <label>Correo<input id="oauth-email" type="email" autocomplete="username" required></label>
+        <label>Contraseña<input id="oauth-password" type="password" autocomplete="current-password" required></label>
+        <button class="primary wide" type="submit">Entrar y continuar</button>
+      </form>
+      <div id="oauth-login-error" class="connect-status hidden"></div>
+    `);
+    $('#oauth-login-form').onsubmit=async e=>{
+      e.preventDefault();
+      const box=$('#oauth-login-error');
+      box.classList.remove('hidden','error'); box.textContent='Verificando…';
+      const {error}=await db.auth.signInWithPassword({
+        email:$('#oauth-email').value.trim(),
+        password:$('#oauth-password').value
+      });
+      if(error){ box.textContent=error.message; box.classList.add('error'); return; }
+      location.reload();
+    };
+    return false;
+  }
+
+  if(!(await requireSession()))return;
+
+  const {data:member,error:memberError}=await db.rpc('link_world_is_member');
+  if(memberError || member!==true){
+    shell('<h1>Cuenta no autorizada</h1><p>Esta cuenta no pertenece al equipo activo de LINK.</p><button class="auth-secondary" id="oauth-signout">Cerrar sesión</button>');
+    $('#oauth-signout').onclick=async()=>{await db.auth.signOut();location.reload();};
+    return;
+  }
+
+  const {data:details,error}=await db.auth.oauth.getAuthorizationDetails(authorizationId);
+  if(error || !details){
+    shell('<h1>No se pudo abrir la autorización</h1><p>'+safe(error?.message||'Solicitud OAuth inválida o vencida.')+'</p>');
+    return;
+  }
+
+  if(!('authorization_id' in details)){
+    if(details.redirect_url){ location.href=details.redirect_url; return; }
+    shell('<h1>Autorización ya resuelta</h1><p>Vuelve a ChatGPT para continuar.</p>');
+    return;
+  }
+
+  const client=details.client||details.oauth_client||{};
+  const clientName=client.client_name||client.name||'ChatGPT';
+  const scope=String(details.scope||'').trim();
+  const scopes=scope?scope.split(/\s+/):[];
+  shell(`
+    <h1>Conectar ${safe(clientName)} con LINKRRSS</h1>
+    <p>Esta conexión permitirá que ChatGPT use las herramientas autorizadas de LINKRRSS. Las credenciales de Zernio permanecen guardadas en LINK y nunca se entregan al cliente.</p>
+    <div class="security-note">
+      <strong>Ruta autorizada</strong><br>
+      ChatGPT → LINKRRSS → Zernio → redes conectadas
+    </div>
+    ${scopes.length?`<div class="oauth-scopes"><small>PERMISOS SOLICITADOS</small><div>${scopes.map(s=>'<span>'+safe(s)+'</span>').join('')}</div></div>`:''}
+    <div class="oauth-actions">
+      <button class="auth-secondary" id="oauth-deny" type="button">Cancelar</button>
+      <button class="primary" id="oauth-approve" type="button">Autorizar LINKRRSS</button>
+    </div>
+    <div id="oauth-status" class="connect-status hidden"></div>
+  `);
+
+  const status=$('#oauth-status');
+  const finish=async decision=>{
+    $('#oauth-approve').disabled=true; $('#oauth-deny').disabled=true;
+    status.classList.remove('hidden','error'); status.textContent=decision==='approve'?'Autorizando…':'Cancelando…';
+    const result=decision==='approve'
+      ? await db.auth.oauth.approveAuthorization(authorizationId)
+      : await db.auth.oauth.denyAuthorization(authorizationId);
+    if(result.error){
+      status.textContent=result.error.message; status.classList.add('error');
+      $('#oauth-approve').disabled=false; $('#oauth-deny').disabled=false;
+      return;
+    }
+    if(result.data?.redirect_url){ location.href=result.data.redirect_url; return; }
+    status.textContent='Autorización procesada. Vuelve a ChatGPT.';
+  };
+  $('#oauth-approve').onclick=()=>finish('approve');
+  $('#oauth-deny').onclick=()=>finish('deny');
+}
+
 function openAdminLoginModal(){
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop">
@@ -1816,6 +1922,12 @@ async function loadContent(){return maybeAutoSync(true);}
 async function loadAnalytics(){return maybeAutoSync(true);}
 async function loadAutomations(){return maybeAutoSync(true);}
 
-loadBase().catch(e=>{
-  $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir LINK RRSS.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
-});
+if(location.pathname==='/oauth/consent'){
+  handleOAuthConsentPage().catch(e=>{
+    $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir la autorización LINK.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
+  });
+}else{
+  loadBase().catch(e=>{
+    $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir LINK RRSS.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
+  });
+}
