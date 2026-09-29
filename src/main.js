@@ -983,6 +983,10 @@ function openPostComposer(){
   if(!state.canManage){openAdminLoginModal();return;}
   if(!state.activeAccount)return;
   if(state.activeAccount.can_post===false){toast('Esta cuenta no tiene permiso de publicación.',true);return;}
+  const savedDraft=state.workspace?.ui_state?.composer_draft;
+  const draft=savedDraft?.account_id===state.activeAccount.id?savedDraft:null;
+  const draftCaption=draft?.caption||'';
+  const draftAsset=draft?.asset_name||'';
   $('#modal-root').innerHTML=`
     <div class="modal-backdrop">
       <section class="modal composer-modal">
@@ -995,8 +999,9 @@ function openPostComposer(){
             <input id="post-media" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required>
           </label>
           <label>Pie de publicación
-            <textarea id="post-caption" rows="7" maxlength="2200" placeholder="Escribe el pie de publicación…" required></textarea>
+            <textarea id="post-caption" rows="7" maxlength="2200" placeholder="Escribe el pie de publicación…" required>${safe(draftCaption)}</textarea>
           </label>
+          ${draftAsset?'<div class="composer-draft-note"><strong>Pieza preparada</strong><span>'+safe(draftAsset)+'</span><small>Selecciona este archivo para completar el envío.</small></div>':''}
           <div class="composer-preview hidden" id="composer-preview"><img id="composer-preview-img" alt=""></div>
           <div class="security-note">Publicación inmediata mediante LINKRRSS → Zernio. La cuenta destino se valida en Supabase antes de enviar.</div>
           <button class="primary wide" id="publish-submit" type="submit">Publicar ahora</button>
@@ -1055,6 +1060,10 @@ function openPostComposer(){
         idempotency_key:crypto.randomUUID()
       });
       status.textContent=published.platform_post_url?'Publicado correctamente.':'Zernio recibió la publicación.';
+      const nextUi={...(state.workspace?.ui_state||{})};
+      if(nextUi.composer_draft?.account_id===state.activeAccount.id) delete nextUi.composer_draft;
+      await invokeZernio({action:'workspace.touch',business_id:state.business.id,ui_state:nextUi}).catch(()=>null);
+      state.workspace={...(state.workspace||{}),ui_state:nextUi};
       await invokeZernio({action:'sync.business',business_id:state.business.id,trigger:'post_publish'}).catch(()=>null);
       await loadBusiness({restore:true});
       if(published.platform_post_url){
