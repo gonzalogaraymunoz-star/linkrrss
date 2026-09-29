@@ -975,8 +975,99 @@ function contentSection(){
     </article>`;
   }).join(''):emptyMemory('Sin publicaciones en este periodo','Cambia el filtro o sincroniza la cuenta para ampliar la memoria.');
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></section>
+    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><div class="content-heading-actions">${state.canManage&&state.activeAccount?.can_post!==false?'<button class="primary" id="new-post">＋ Publicar</button>':''}<span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></div></section>
     <div id="content-live" class="content-grid">${body}</div>`;
+}
+
+function openPostComposer(){
+  if(!state.canManage){openAdminLoginModal();return;}
+  if(!state.activeAccount)return;
+  if(state.activeAccount.can_post===false){toast('Esta cuenta no tiene permiso de publicación.',true);return;}
+  $('#modal-root').innerHTML=`
+    <div class="modal-backdrop">
+      <section class="modal composer-modal">
+        <button class="modal-close" id="modal-close">×</button>
+        <span class="eyebrow">PUBLICAR / ${safe(state.activeAccount.platform.toUpperCase())}</span>
+        <h2>Nueva publicación</h2>
+        <p>La pieza se sube al almacenamiento de Zernio y se publica en <strong>@${safe(state.activeAccount.username||state.activeAccount.display_name||'cuenta')}</strong>. LINK no vuelve a pedir la sesión de Instagram.</p>
+        <form id="post-composer-form">
+          <label>Imagen
+            <input id="post-media" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required>
+          </label>
+          <label>Pie de publicación
+            <textarea id="post-caption" rows="7" maxlength="2200" placeholder="Escribe el pie de publicación…" required></textarea>
+          </label>
+          <div class="composer-preview hidden" id="composer-preview"><img id="composer-preview-img" alt=""></div>
+          <div class="security-note">Publicación inmediata mediante LINKRRSS → Zernio. La cuenta destino se valida en Supabase antes de enviar.</div>
+          <button class="primary wide" id="publish-submit" type="submit">Publicar ahora</button>
+        </form>
+        <div id="publish-status" class="connect-status hidden"></div>
+      </section>
+    </div>`;
+  $('#modal-close').onclick=()=>$('#modal-root').innerHTML='';
+  $('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))$('#modal-root').innerHTML='';};
+  const media=$('#post-media');
+  media.onchange=()=>{
+    const file=media.files?.[0];
+    const preview=$('#composer-preview');
+    const img=$('#composer-preview-img');
+    if(!file){preview.classList.add('hidden');return;}
+    if(file.type.startsWith('image/')){
+      img.src=URL.createObjectURL(file);
+      preview.classList.remove('hidden');
+    }
+  };
+  $('#post-composer-form').onsubmit=async e=>{
+    e.preventDefault();
+    const file=media.files?.[0];
+    const caption=String($('#post-caption').value||'').trim();
+    const status=$('#publish-status');
+    const submit=$('#publish-submit');
+    if(!file || !caption)return;
+    if(file.size>25*1024*1024){status.classList.remove('hidden');status.classList.add('error');status.textContent='El archivo supera 25 MB.';return;}
+    const sourceId=state.activeAccount.source_id || state.sources.find(s=>s.id===state.activeAccount.source_id)?.id || state.sources[0]?.id;
+    if(!sourceId){status.classList.remove('hidden');status.classList.add('error');status.textContent='No se encontró la fuente Zernio de esta cuenta.';return;}
+    submit.disabled=true;
+    status.classList.remove('hidden','error');
+    status.textContent='Subiendo pieza a Zernio…';
+    try{
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||''));
+        reader.onerror=()=>reject(reader.error||new Error('No se pudo leer el archivo.'));
+        reader.readAsDataURL(file);
+      });
+      const uploaded=await invokeZernio({
+        action:'media.upload',
+        source_id:sourceId,
+        filename:file.name||('linkrrss-'+Date.now()+'.png'),
+        content_type:file.type,
+        base64_data:dataUrl
+      });
+      status.textContent='Publicando en '+(state.activeAccount.platform||'la red')+'…';
+      const published=await invokeZernio({
+        action:'post.publish',
+        source_id:sourceId,
+        account_id:state.activeAccount.id,
+        content:caption,
+        media_url:uploaded.public_url,
+        media_type:file.type.startsWith('video/')?'video':'image',
+        idempotency_key:crypto.randomUUID()
+      });
+      status.textContent=published.platform_post_url?'Publicado correctamente.':'Zernio recibió la publicación.';
+      await invokeZernio({action:'sync.business',business_id:state.business.id,trigger:'post_publish'}).catch(()=>null);
+      await loadBusiness({restore:true});
+      if(published.platform_post_url){
+        status.innerHTML='Publicado correctamente · <a href="'+safe(published.platform_post_url)+'" target="_blank" rel="noreferrer">Abrir en la red ↗</a>';
+      }
+      toast('Publicación enviada correctamente.');
+      submit.textContent='Publicado';
+    }catch(error){
+      status.classList.add('error');
+      status.textContent=error.message||'No se pudo publicar.';
+      submit.disabled=false;
+    }
+  };
 }
 
 function openPostDetail(postId){
@@ -1261,6 +1352,7 @@ function bind(){
   $('#admin-login')?.addEventListener('click',openAdminLoginModal);
   $('#admin-empty')?.addEventListener('click',openAdminLoginModal);
   $('#admin-connections')?.addEventListener('click',openAdminLoginModal);
+  $('#new-post')?.addEventListener('click',openPostComposer);
   $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
   $('#back-world')?.addEventListener('click',()=>{location.href=LINK_WORLD_URL+(state.business?('?business='+encodeURIComponent(state.business.id)):'');});
