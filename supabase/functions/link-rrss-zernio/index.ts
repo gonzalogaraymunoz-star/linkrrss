@@ -786,6 +786,100 @@ Deno.serve(async (req: Request) => {
       return json({ok:true,data});
     }
 
+    if (action === "media.upload") {
+      const sourceId=String(body.source_id||"");
+      const filename=String(body.filename||"").trim();
+      const contentType=String(body.content_type||"").trim().toLowerCase();
+      const encoded=String(body.base64_data||"").trim();
+      if(!sourceId || !filename || !contentType || !encoded) return json({ok:false,error:"source_id, filename, content_type y base64_data son obligatorios."},400);
+      if(!["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime"].includes(contentType)) {
+        return json({ok:false,error:"Tipo de archivo no soportado para publicación."},400);
+      }
+      const cleanBase64=encoded.includes(",")?encoded.slice(encoded.indexOf(",")+1):encoded;
+      let bytes:Uint8Array;
+      try {
+        const binary=atob(cleanBase64);
+        bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+      } catch {
+        return json({ok:false,error:"El archivo no pudo decodificarse."},400);
+      }
+      if(!bytes.byteLength) return json({ok:false,error:"El archivo está vacío."},400);
+      if(bytes.byteLength>25*1024*1024) return json({ok:false,error:"LINK RRSS limita esta subida directa a 25 MB."},413);
+      const {apiKey}=await readSourceSecret(admin,sourceId);
+      const presigned=await zernioPost(apiKey,"/v1/media/presign",{
+        filename,
+        contentType,
+        size:bytes.byteLength
+      });
+      const uploadUrl=String(presigned?.uploadUrl||"");
+      const publicUrl=String(presigned?.publicUrl||"");
+      if(!uploadUrl || !publicUrl) return json({ok:false,error:"Zernio no devolvió URLs de subida válidas."},502);
+      const uploaded=await fetch(uploadUrl,{
+        method:"PUT",
+        headers:{"Content-Type":contentType},
+        body:bytes
+      });
+      if(!uploaded.ok) {
+        const detail=await uploaded.text().catch(()=>"");
+        return json({ok:false,error:"No se pudo subir el archivo al almacenamiento de Zernio.",detail},502);
+      }
+      return json({ok:true,public_url:publicUrl,key:presigned?.key||null,expires_in:presigned?.expiresIn||null});
+    }
+
+    if (action === "post.publish") {
+      const sourceId=String(body.source_id||"");
+      const localAccountId=String(body.account_id||"");
+      const content=String(body.content||"").trim();
+      const mediaUrl=String(body.media_url||"").trim();
+      const mediaType=String(body.media_type||"image").trim().toLowerCase();
+      if(!sourceId || !localAccountId || !mediaUrl) return json({ok:false,error:"source_id, account_id y media_url son obligatorios."},400);
+      if(!mediaUrl.startsWith("https://")) return json({ok:false,error:"media_url debe ser HTTPS."},400);
+      if(!["image","video","gif","document"].includes(mediaType)) return json({ok:false,error:"media_type no soportado."},400);
+      const {apiKey}=await readSourceSecret(admin,sourceId);
+      const {data:account,error:accountError}=await admin.from("link_rrss_accounts")
+        .select("id,source_id,external_account_id,platform,username,status,can_post")
+        .eq("id",localAccountId).eq("source_id",sourceId).single();
+      if(accountError || !account) return json({ok:false,error:"Cuenta RRSS no encontrada dentro de esta fuente."},404);
+      if(account.status!=="connected" || account.can_post===false) return json({ok:false,error:"La cuenta no está habilitada para publicar."},409);
+      if(String(account.platform||"").toLowerCase()==="instagram" && !mediaUrl) return json({ok:false,error:"Instagram requiere media."},400);
+      const idempotencyKey=String(body.idempotency_key||crypto.randomUUID());
+      const payload:any={
+        content,
+        mediaItems:[{type:mediaType,url:mediaUrl}],
+        platforms:[{platform:String(account.platform||"").toLowerCase(),accountId:String(account.external_account_id)}],
+        publishNow:true
+      };
+      const data=await zernioPost(apiKey,"/v1/posts",payload,{"Idempotency-Key":idempotencyKey});
+      const created=data?.post||data;
+      if(created) {
+        await persistPosts(admin,account,[created]);
+        const externalId=String(created?._id||created?.id||created?.platformPostId||"");
+        const target=(created?.platforms||[]).find((p:any)=>String(p?.platform||"").toLowerCase()===String(account.platform||"").toLowerCase()) || created?.platforms?.[0] || {};
+        if(externalId) await cacheActivity(admin,{
+          accountId:account.id,
+          activityType:"publication",
+          externalId,
+          occurredAt:created?.publishedAt||created?.createdAt||new Date().toISOString(),
+          payload:{
+            post_id:externalId,
+            text:created?.content||content,
+            media_type:mediaType,
+            thumbnail:created?.thumbnailUrl||created?.mediaItems?.[0]?.thumbnail||mediaUrl,
+            url:target?.platformPostUrl||created?.platformPostUrl||null,
+            metrics:created?.analytics||created?.metrics||{}
+          }
+        });
+        await refreshAccountMemory(admin,account.id);
+      }
+      return json({
+        ok:true,
+        data,
+        post_id:created?._id||created?.id||null,
+        status:created?.status||null,
+        platform_post_url:(created?.platforms||[]).find((p:any)=>String(p?.platform||"").toLowerCase()===String(account.platform||"").toLowerCase())?.platformPostUrl||created?.platformPostUrl||null
+      });
+    }
+
     if (action === "inbox.send") {
       const sourceId=String(body.source_id||"");
       const conversationId=String(body.conversation_id||"");
