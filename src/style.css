@@ -575,3 +575,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .ig-kpi-scroll{margin-right:-18px;padding-right:18px}.ig-kpi-scroll button{flex-basis:205px;padding:16px}.ig-kpi-scroll strong{font-size:26px}
   .ig-reel-row{grid-template-columns:50px minmax(0,1fr) auto;gap:10px}.ig-reel-row img,.ig-thumb{width:50px;height:66px}.ig-reel-row aside strong{font-size:19px}.ig-reel-row aside span{max-width:80px}.ig-followers strong{font-size:48px}
 }
+
+
+/* LINKRRSS publisher */
+.content-heading-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.composer-modal{width:min(620px,96vw)!important;max-height:92vh;overflow:auto}
+.composer-modal form{margin-top:16px}
+.composer-modal textarea{width:100%;resize:vertical;border:1px solid var(--link-line);border-radius:10px;padding:11px 12px;outline:none;font:inherit;line-height:1.5}
+.composer-modal textarea:focus{border-color:var(--link-acid);box-shadow:0 0 0 3px rgba(223,255,0,.12)}
+.composer-modal input[type="file"]{padding:9px;background:var(--link-paper)}
+.composer-preview{border:1px solid var(--link-line);border-radius:12px;overflow:hidden;background:#111;max-height:360px;display:grid;place-items:center}
+.composer-preview img{display:block;max-width:100%;max-height:360px;object-fit:contain}
+.composer-modal .connect-status a{color:inherit;font-weight:700}
+@media(max-width:680px){.content-heading-actions{width:100%;justify-content:space-between}.composer-modal{padding:20px!important}}
