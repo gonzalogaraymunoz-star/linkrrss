@@ -588,3 +588,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .composer-preview img{display:block;max-width:100%;max-height:360px;object-fit:contain}
 .composer-modal .connect-status a{color:inherit;font-weight:700}
 @media(max-width:680px){.content-heading-actions{width:100%;justify-content:space-between}.composer-modal{padding:20px!important}}
+
+.composer-draft-note{display:grid;gap:3px;border:1px solid var(--link-line);background:#f7f7f2;border-radius:10px;padding:10px 12px}
+.composer-draft-note strong{font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.composer-draft-note span{font-size:10px;font-weight:650}
+.composer-draft-note small{font-size:8px;color:var(--link-stone)}
