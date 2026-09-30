@@ -274,7 +274,7 @@ async function persistPosts(admin: any, account: any, posts: any[]) {
 }
 
 async function persistConversations(admin:any, account:any, conversations:any[]){
-  if(!conversations?.length) return {count:0};
+  if(!conversations?.length) return {count:0,rows:[]};
   const now=new Date().toISOString();
   const records=conversations.map((c:any)=>{
     const id=String(c?.id || c?._id || "");
@@ -296,9 +296,48 @@ async function persistConversations(admin:any, account:any, conversations:any[])
       updated_at:now
     };
   }).filter(Boolean);
-  const {error}=await admin.from("link_rrss_conversations").upsert(records,{onConflict:"account_id,external_conversation_id"});
+  const {data:saved,error}=await admin.from("link_rrss_conversations")
+    .upsert(records,{onConflict:"account_id,external_conversation_id"})
+    .select("id,external_conversation_id");
   if(error) throw error;
-  return {count:records.length};
+  return {count:records.length,rows:saved||[]};
+}
+
+async function persistMessages(admin:any, conversationId:string, messages:any[]){
+  if(!conversationId || !messages?.length) return {count:0,incoming:0,outgoing:0,unknown:0};
+  const now=new Date().toISOString();
+  const records=messages.map((m:any)=>{
+    const externalMessageId=String(m?.id || m?._id || "");
+    if(!externalMessageId) return null;
+    const direction=["incoming","outgoing"].includes(String(m?.direction||"").toLowerCase())
+      ? String(m.direction).toLowerCase()
+      : "unknown";
+    return {
+      conversation_id:conversationId,
+      external_message_id:externalMessageId,
+      direction,
+      sender_id:m?.senderId || null,
+      sender_name:m?.senderName || null,
+      message:typeof m?.message==="string" ? m.message : (m?.text || null),
+      attachments:Array.isArray(m?.attachments)?m.attachments:[],
+      delivery_status:m?.deliveryStatus || null,
+      sent_via:m?.sentVia || null,
+      platform_created_at:m?.createdAt || m?.sentAt || null,
+      raw:m || {},
+      last_seen_at:now,
+      updated_at:now
+    };
+  }).filter(Boolean);
+  if(!records.length) return {count:0,incoming:0,outgoing:0,unknown:0};
+  const {error}=await admin.from("link_rrss_messages")
+    .upsert(records,{onConflict:"conversation_id,external_message_id"});
+  if(error) throw error;
+  return {
+    count:records.length,
+    incoming:records.filter((x:any)=>x.direction==="incoming").length,
+    outgoing:records.filter((x:any)=>x.direction==="outgoing").length,
+    unknown:records.filter((x:any)=>x.direction==="unknown").length
+  };
 }
 
 async function refreshAccountMemory(admin:any, accountId:string, historyPatch:any={}){
@@ -539,7 +578,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
         if (analytics.ok) await persistPosts(admin,a,rows(analytics.data,["posts"]));
 
         const inbox = await safeFetch(apiKey,"/v1/inbox/conversations",{
-          accountId:a.external_account_id,platform:a.platform,limit:30,sortOrder:"desc"
+          accountId:a.external_account_id,platform:a.platform,limit:100,sortOrder:"desc"
         });
         const inboxStatus = inbox.ok ? (rows(inbox.data,["conversations"]).length?"ok":"empty") : (inbox.error?.status===403?"blocked":"error");
         await cacheSnapshot(admin,{
@@ -548,31 +587,67 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
           error:inbox.ok?null:JSON.stringify(inbox.error),ttlMinutes:3
         });
         summary.modules.inbox = (summary.modules.inbox||0)+1;
+        const messageSync={conversations:0,messages:0,incoming:0,outgoing:0,unknown:0,errors:0};
         if (inbox.ok) {
           const conversations = rows(inbox.data,["conversations"]);
-          await persistConversations(admin,a,conversations);
-          for (const c of conversations.slice(0,60)) {
+          const persisted=await persistConversations(admin,a,conversations);
+          const localByExternal=new Map((persisted.rows||[]).map((row:any)=>[String(row.external_conversation_id),String(row.id)]));
+          for (const c of conversations.slice(0,100)) {
             const conversationId = String(c?.id || c?._id || "");
             const stamp = String(c?.updatedTime || c?.updatedAt || c?.lastMessageAt || "");
-            if (!conversationId || !stamp) continue;
-            await cacheActivity(admin,{
-              accountId:a.id,
-              activityType:"message",
-              externalId:conversationId+":"+stamp,
-              occurredAt:stamp,
-              payload:{
-                conversation_id:conversationId,
-                participant_id:c?.participantId || null,
-                participant_name:c?.participantName || c?.participantUsername || c?.username || "Contacto",
-                participant_username:c?.participantUsername || c?.username || null,
-                participant_picture:c?.participantPicture || null,
-                message:typeof c?.lastMessage==="string"?c.lastMessage:(c?.lastMessage?.text || c?.lastMessageText || c?.preview || ""),
-                unread_count:Number(c?.unreadCount || 0),
-                status:c?.status || "active",
-                url:c?.url || null
-              }
-            });
+            if (!conversationId) continue;
+            if(stamp){
+              await cacheActivity(admin,{
+                accountId:a.id,
+                activityType:"message",
+                externalId:conversationId+":"+stamp,
+                occurredAt:stamp,
+                payload:{
+                  conversation_id:conversationId,
+                  participant_id:c?.participantId || null,
+                  participant_name:c?.participantName || c?.participantUsername || c?.username || "Contacto",
+                  participant_username:c?.participantUsername || c?.username || null,
+                  participant_picture:c?.participantPicture || null,
+                  message:typeof c?.lastMessage==="string"?c.lastMessage:(c?.lastMessage?.text || c?.lastMessageText || c?.preview || ""),
+                  unread_count:Number(c?.unreadCount || 0),
+                  status:c?.status || "active",
+                  url:c?.url || null
+                }
+              });
+            }
           }
+
+          for(let i=0;i<conversations.length;i+=5){
+            const batch=conversations.slice(i,i+5);
+            await Promise.all(batch.map(async(c:any)=>{
+              const externalConversationId=String(c?.id || c?._id || "");
+              const localConversationId=localByExternal.get(externalConversationId);
+              if(!externalConversationId || !localConversationId) return;
+              const history=await safeFetch(
+                apiKey,
+                `/v1/inbox/conversations/${encodeURIComponent(externalConversationId)}/messages`,
+                {accountId:a.external_account_id,limit:100,sortOrder:"desc"}
+              );
+              if(!history.ok){
+                messageSync.errors++;
+                if(history.error?.required_group) summary.blocked.push({module:"inbox_messages",required_group:history.error.required_group});
+                else summary.errors.push({module:"inbox_messages",account:a.username,conversation:externalConversationId,error:history.error});
+                return;
+              }
+              messageSync.conversations++;
+              const persistedMessages=await persistMessages(admin,localConversationId,rows(history.data,["messages"]));
+              messageSync.messages+=persistedMessages.count;
+              messageSync.incoming+=persistedMessages.incoming;
+              messageSync.outgoing+=persistedMessages.outgoing;
+              messageSync.unknown+=persistedMessages.unknown;
+            }));
+          }
+          summary.modules.inbox_messages=(summary.modules.inbox_messages||0)+messageSync.messages;
+          await cacheSnapshot(admin,{
+            businessId,sourceId:s.id,accountId:a.id,module:"inbox_messages",
+            payload:messageSync,status:messageSync.errors?"partial":"ok",
+            error:messageSync.errors?JSON.stringify({errors:messageSync.errors}):null,ttlMinutes:3
+          });
         }
         if (!inbox.ok) {
           if (inbox.error?.required_group) summary.blocked.push({module:"inbox",required_group:inbox.error.required_group});
@@ -585,6 +660,9 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
           can_post:a.can_post,
           can_analytics:a.can_analytics,
           inbox: inbox.ok,
+          inbox_message_history: messageSync.messages>0,
+          inbox_message_direction: (messageSync.incoming+messageSync.outgoing)>0,
+          inbox_messages_synced: messageSync.messages,
           inbox_required_group: inbox.error?.required_group || null
         };
         await cacheSnapshot(admin,{
