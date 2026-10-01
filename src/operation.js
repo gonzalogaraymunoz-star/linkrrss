@@ -300,9 +300,12 @@ function openProofModal(taskId,ctx){
   const task=(state.operationTasks||[]).find(t=>t.id===taskId);if(!task)return;
   const posts=(state.persistentPosts||[]).filter(p=>!task.account_id||p.account_id===task.account_id).slice(0,40);
   const root=document.querySelector('#modal-root');
-  root.innerHTML='<div class="modal-backdrop"><section class="modal compact-modal op-modal"><button class="modal-close" id="modal-close">×</button><span class="op-eyebrow">COMPROBAR TRABAJO</span><h2>'+esc(task.title)+'</h2><p>Selecciona una publicación detectada o pega un enlace a una captura/archivo. Sin evidencia no se puede verificar.</p><form id="operation-proof-form">'+
+  const storedProof=String(task.proof_url||'').startsWith('storage://');
+  root.innerHTML='<div class="modal-backdrop"><section class="modal compact-modal op-modal"><button class="modal-close" id="modal-close">×</button><span class="op-eyebrow">COMPROBAR TRABAJO</span><h2>'+esc(task.title)+'</h2><p>Selecciona una publicación detectada, sube un pantallazo/archivo o pega un enlace. Sin evidencia no se puede verificar.</p><form id="operation-proof-form">'+
     '<label>Publicación detectada<select id="op-proof-post"><option value="">No enlazar publicación</option>'+posts.map(p=>'<option value="'+esc(p.id)+'" '+(task.linked_post_id===p.id?'selected':'')+'>'+esc(shortDate(p.published_at||p.created_at)+' · '+String(p.content||p.media_type||'Publicación').slice(0,70))+'</option>').join('')+'</select></label>'+
-    '<label>URL de evidencia<input id="op-proof-url" type="url" value="'+esc(task.proof_url||'')+'" placeholder="Publicación, captura, Drive, Canva…"></label>'+
+    '<label>Pantallazo o archivo<input id="op-proof-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime"><small>Máximo 25 MB. Queda guardado de forma privada en LINK.</small></label>'+
+    (storedProof?'<div class="op-stored-proof"><strong>Archivo ya guardado en LINK</strong><small>'+esc(task.proof_metadata?.name||'Evidencia privada')+'</small></div>':'')+
+    '<label>O URL de evidencia<input id="op-proof-url" type="url" value="'+esc(storedProof?'':(task.proof_url||''))+'" placeholder="Publicación, Drive, Canva…"></label>'+
     '<label>Nota<textarea id="op-proof-note" rows="3" placeholder="Qué demuestra esta evidencia">'+esc(task.proof_note||'')+'</textarea></label>'+
     '<button class="primary wide" type="submit">Verificar con evidencia</button>'+
     (task.status!=='awaiting_proof'?'<button class="auth-secondary wide" id="operation-awaiting-proof" type="button">Marcar como ejecutada, falta comprobante</button>':'')+
@@ -317,14 +320,32 @@ function openProofModal(taskId,ctx){
   document.querySelector('#operation-proof-form').onsubmit=async e=>{
     e.preventDefault();
     const postId=document.querySelector('#op-proof-post').value||null;
-    const proofUrl=document.querySelector('#op-proof-url').value.trim()||null;
+    let proofUrl=document.querySelector('#op-proof-url').value.trim()||null;
+    const file=document.querySelector('#op-proof-file')?.files?.[0]||null;
     const note=document.querySelector('#op-proof-note').value.trim()||null;
-    if(!postId&&!proofUrl){toast('Necesitas una publicación o una URL de evidencia.',true);return;}
+    let proofType=postId?'rrss_post':(proofUrl?'url':null);
+    let proofMetadata=task.proof_metadata||{};
+    if(file){
+      if(file.size>25*1024*1024){toast('El archivo supera 25 MB.',true);return;}
+      const cleanName=String(file.name||'evidencia').replace(/[^a-zA-Z0-9._-]+/g,'-').slice(-120);
+      const path=[state.business.id,task.plan_id,task.id,Date.now()+'-'+cleanName].join('/');
+      const {error:uploadError}=await db.storage.from('link-rrss-operation-proof').upload(path,file,{
+        cacheControl:'3600',
+        upsert:false,
+        contentType:file.type||undefined
+      });
+      if(uploadError){toast(uploadError.message||String(uploadError),true);return;}
+      proofType='storage';
+      proofUrl='storage://link-rrss-operation-proof/'+path;
+      proofMetadata={bucket:'link-rrss-operation-proof',path,name:file.name,type:file.type,size:file.size};
+    }
+    if(!postId&&!proofUrl){toast('Necesitas una publicación, un archivo o una URL de evidencia.',true);return;}
     const patch={
       linked_post_id:postId,
-      proof_type:postId?'rrss_post':'url',
+      proof_type:proofType,
       proof_url:proofUrl,
       proof_note:note,
+      proof_metadata:proofMetadata,
       status:'verified',
       completed_at:task.completed_at||new Date().toISOString(),
       verified_at:new Date().toISOString(),
