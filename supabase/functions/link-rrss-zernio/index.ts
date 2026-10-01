@@ -458,12 +458,29 @@ async function syncAccounts(admin: any, sourceId: string, apiKey: string, extern
   return { accounts, health: healthPayload };
 }
 
+function sleep(ms:number){ return new Promise(resolve=>setTimeout(resolve,ms)); }
+
+function retryAfterMs(error:any,attempt:number){
+  if(Number(error?.status)!==429) return 0;
+  const message=String(error?.message||error?.payload?.error?.message||"");
+  const match=message.match(/retry after\s+(\d+)\s+seconds?/i);
+  const seconds=match?Number(match[1]):Math.min(4*(attempt+1),20);
+  return Math.min(Math.max(seconds,1),30)*1000+350;
+}
+
 async function safeFetch(apiKey: string, path: string, query: Record<string, unknown> = {}) {
-  try {
-    return { ok: true, data: await zernioGet(apiKey, path, query), error: null };
-  } catch (error: any) {
-    return { ok: false, data: null, error: errorInfo(error) };
+  let lastError:any=null;
+  for(let attempt=0;attempt<3;attempt++){
+    try {
+      return { ok: true, data: await zernioGet(apiKey, path, query), error: null };
+    } catch (error: any) {
+      lastError=error;
+      const wait=retryAfterMs(error,attempt);
+      if(!wait || attempt===2) break;
+      await sleep(wait);
+    }
   }
+  return { ok: false, data: null, error: errorInfo(lastError) };
 }
 
 async function fullSync(admin: any, businessId: string, trigger = "app_open") {
@@ -617,8 +634,10 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
             }
           }
 
-          for(let i=0;i<conversations.length;i+=5){
-            const batch=conversations.slice(i,i+5);
+          const inboxBatchSize=String(a.platform||"").toLowerCase()==="whatsapp"?2:4;
+          const inboxBatchPauseMs=String(a.platform||"").toLowerCase()==="whatsapp"?700:250;
+          for(let i=0;i<conversations.length;i+=inboxBatchSize){
+            const batch=conversations.slice(i,i+inboxBatchSize);
             await Promise.all(batch.map(async(c:any)=>{
               const externalConversationId=String(c?.id || c?._id || "");
               const localConversationId=localByExternal.get(externalConversationId);
@@ -641,6 +660,7 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
               messageSync.outgoing+=persistedMessages.outgoing;
               messageSync.unknown+=persistedMessages.unknown;
             }));
+            if(i+inboxBatchSize<conversations.length) await sleep(inboxBatchPauseMs);
           }
           summary.modules.inbox_messages=(summary.modules.inbox_messages||0)+messageSync.messages;
           await cacheSnapshot(admin,{
