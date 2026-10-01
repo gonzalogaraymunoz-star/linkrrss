@@ -115,13 +115,14 @@ function countDeliverable(posts,type){
   return 0;
 }
 
-function taskList(tasks,mode='direction'){
+function taskList(tasks,mode='direction',state=null){
   if(!tasks.length) return '<div class="op-empty">Todavía no hay tareas en este periodo.</div>';
   return '<div class="op-task-list">'+tasks.map(t=>{
     const hasProof=!!(t.linked_post_id||t.proof_url);
+    const isMine=!!(state?.session?.user?.id && t.assigned_to_user_id===state.session.user.id);
     return '<article class="op-task '+taskStatusTone(t.status)+'">'+
       '<div class="op-task-main"><span class="op-status-dot"></span><div><div class="op-task-meta">'+
-      '<span>'+esc(t.content_type||'tarea')+'</span>'+(t.channel?'<span>'+esc(t.channel)+'</span>':'')+
+      '<span>'+esc(t.content_type||'tarea')+'</span>'+(t.channel?'<span>'+esc(t.channel)+'</span>':'')+(isMine?'<span class="op-assignee">Tú</span>':'')+
       '</div><strong>'+esc(t.title)+'</strong><small>'+esc(shortDate(t.planned_at))+'</small></div></div>'+
       '<div class="op-task-side"><span class="op-proof '+(hasProof?'ok':'missing')+'">'+(hasProof?'Evidencia':'Sin evidencia')+'</span>'+
       '<b>'+esc(taskStatusLabel(t.status))+'</b>'+
@@ -145,10 +146,10 @@ function directionView(state,plan,tasks,posts){
       '<div><span>Operación</span><strong>'+money(plan.operator_fee_clp)+'</strong></div>'+
       '<div><span>Margen LINK*</span><strong>'+money(margin)+'</strong><small>*antes de otros costos e impuestos</small></div>'+
     '</section>'+
-    '<section class="op-card"><span class="op-eyebrow">ENCARGADA</span><h3>'+esc(plan.operator_name||'Por asignar')+'</h3><p>Produce y publica con sus herramientas habituales. LINK comprueba y estudia.</p><button id="edit-operation-plan">Editar ficha</button></section>'+
+    '<section class="op-card"><span class="op-eyebrow">ENCARGADO</span><h3>'+esc(plan.operator_user_id===state.session?.user?.id?'Tú · '+(plan.operator_name||'Encargado'):plan.operator_name||'Por asignar')+'</h3><p>Produce y publica con sus herramientas habituales. LINK comprueba y estudia.</p><button id="edit-operation-plan">Editar ficha</button></section>'+
     '<section class="op-card"><span class="op-eyebrow">CUMPLIMIENTO</span><strong class="op-big">'+compliance+'%</strong><p>'+verified+' comprobadas · '+waiting+' requieren evidencia</p></section>'+
     '<section class="op-card"><span class="op-eyebrow">SEÑAL SOCIAL</span><strong class="op-big">'+new Intl.NumberFormat('es-CL',{notation:'compact'}).format(totalReach)+'</strong><p>alcance del periodo en publicaciones guardadas</p></section>'+
-    '<section class="op-panel span3"><div class="op-panel-head"><div><span class="op-eyebrow">TRABAJO</span><h3>Qué se hizo y qué falta comprobar</h3></div><button class="primary" id="new-operation-task">＋ Nueva tarea</button></div>'+taskList(tasks,'direction')+'</section>'+
+    '<section class="op-panel span3"><div class="op-panel-head"><div><span class="op-eyebrow">TRABAJO</span><h3>Qué se hizo y qué falta comprobar</h3></div><button class="primary" id="new-operation-task">＋ Nueva tarea</button></div>'+taskList(tasks,'direction',state)+'</section>'+
   '</div>';
 }
 
@@ -156,8 +157,8 @@ function operatorView(state,plan,tasks,posts){
   const verified=tasks.filter(t=>t.status==='verified'&&(t.linked_post_id||t.proof_url)).length;
   const pending=tasks.filter(t=>!['verified','cancelled'].includes(t.status)).length;
   return '<div class="op-grid">'+
-    '<section class="op-card span2 op-operator-hero"><span class="op-eyebrow">MI TRABAJO / '+esc(monthLabel(plan.period_start).toUpperCase())+'</span><h3>'+esc(plan.operator_name||'Encargada de contenido')+'</h3><p>'+esc(plan.objective||'Producir, publicar y comprobar el trabajo social del negocio.')+'</p><div><strong>'+verified+'</strong><span>comprobadas</span><strong>'+pending+'</strong><span>pendientes</span></div></section>'+
-    '<section class="op-panel span3"><div class="op-panel-head"><div><span class="op-eyebrow">AGENDA</span><h3>Trabajo del periodo</h3></div><button class="primary" id="new-operation-task">＋ Nueva tarea</button></div>'+taskList(tasks,'operator')+'</section>'+
+    '<section class="op-card span2 op-operator-hero"><span class="op-eyebrow">MI TRABAJO / '+esc(monthLabel(plan.period_start).toUpperCase())+'</span><h3>'+esc(plan.operator_user_id===state.session?.user?.id?'Tú · '+(plan.operator_name||'Encargado'):plan.operator_name||'Encargado de contenido')+'</h3><p>'+esc(plan.objective||'Producir, publicar y comprobar el trabajo social del negocio.')+'</p><div><strong>'+verified+'</strong><span>comprobadas</span><strong>'+pending+'</strong><span>pendientes</span></div></section>'+
+    '<section class="op-panel span3"><div class="op-panel-head"><div><span class="op-eyebrow">AGENDA</span><h3>Trabajo del periodo</h3></div><button class="primary" id="new-operation-task">＋ Nueva tarea</button></div>'+taskList(tasks,'operator',state)+'</section>'+
   '</div>';
 }
 
@@ -180,7 +181,7 @@ function clientView(state,plan,tasks,posts){
         return '<div><span>'+esc(d.label||d.type)+'</span><strong>'+actual+(d.target!==null&&d.target!==undefined?' / '+Number(d.target):'')+'</strong><small>'+(d.target===null||d.target===undefined?'Meta por definir':'avance del periodo')+'</small></div>';
       }).join('')+
     '</div></section>'+
-    '<section class="op-panel"><div class="op-panel-head"><div><span class="op-eyebrow">COMPROBACIÓN</span><h3>Trabajo validado</h3></div></div>'+taskList(tasks.filter(t=>t.status==='verified'),'client')+'</section>'+
+    '<section class="op-panel"><div class="op-panel-head"><div><span class="op-eyebrow">COMPROBACIÓN</span><h3>Trabajo validado</h3></div></div>'+taskList(tasks.filter(t=>t.status==='verified'),'client',state)+'</section>'+
   '</div>';
 }
 
@@ -249,6 +250,7 @@ function openTaskModal(ctx){
       channel:account?.platform||null,
       planned_at:plannedRaw?new Date(plannedRaw).toISOString():null,
       status:'planned',
+      assigned_to_user_id:plan.operator_user_id||state.session?.user?.id||null,
       created_by:state.session?.user?.id||null
     };
     const {error}=await db.from('link_rrss_operation_tasks').insert(payload);
@@ -266,7 +268,8 @@ function openPlanModal(ctx){
   const target=type=>deliverables.find(x=>x.type===type)?.target;
   const root=document.querySelector('#modal-root');
   root.innerHTML='<div class="modal-backdrop"><section class="modal compact-modal op-modal"><button class="modal-close" id="modal-close">×</button><span class="op-eyebrow">PLAN OPERATIVO</span><h2>'+esc(monthLabel(plan.period_start))+'</h2><form id="operation-plan-form">'+
-    '<label>Encargada<input id="op-operator-name" value="'+esc(plan.operator_name||'')+'" placeholder="Nombre de la encargada"></label>'+
+    '<label>Encargado<input id="op-operator-name" value="'+esc(plan.operator_name||'')+'" placeholder="Nombre del encargado"></label>'+
+    (plan.operator_user_id===state.session?.user?.id?'<div class="op-self-assigned"><strong>Asignado a tu usuario LINK</strong><small>Las nuevas tareas de este plan se te asignan automáticamente.</small></div>':'')+
     '<label>Cobro cliente (CLP)<input id="op-client-fee" type="number" min="0" step="1000" value="'+Number(plan.client_fee_clp||0)+'"></label>'+
     '<label>Pago operación (CLP)<input id="op-operator-fee" type="number" min="0" step="1000" value="'+Number(plan.operator_fee_clp||0)+'"></label>'+
     '<label>Objetivo<textarea id="op-objective" rows="3">'+esc(plan.objective||'')+'</textarea></label>'+
