@@ -3,6 +3,7 @@ import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZa
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connection.js';
 import './style.css';
 import { operationSection, bindOperation } from './operation.js';
+import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -66,7 +67,8 @@ const state = {
   autoOpenedDraft: null,
   operationPlans: [],
   operationTasks: [],
-  operationView: 'direction'
+  operationView: 'direction',
+  notifications: []
 };
 
 const nav = [
@@ -250,6 +252,7 @@ async function loadBusiness(opts={}){
     state.publicationDrafts=drafts.data||[];
     state.operationPlans=operationPlans.data||[];
     state.operationTasks=operationTasks.data||[];
+    await loadNotifications({db,state});
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -263,7 +266,7 @@ async function loadBusiness(opts={}){
       db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
       db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
     ]);
-    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[];
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[]; state.notifications=[];
     state.persistentPosts=posts.data||[];
     state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -283,6 +286,7 @@ async function loadBusiness(opts={}){
   state.liveData={};
   syncUrl();
   renderApp();
+  startNotificationRealtime({db,state,renderApp,toast});
 
   const requestedDraft=new URLSearchParams(location.search).get('draft');
   if(state.canManage && requestedDraft && state.publicationDrafts.some(d=>d.id===requestedDraft) && state.autoOpenedDraft!==requestedDraft){
@@ -636,6 +640,7 @@ function topbar(){
         ${state.canManage?'<span class="sync-memory '+(state.syncing?'syncing':'')+'"><b>'+safe(syncStateLabel())+'</b><small>'+safe(ago(state.workspace?.last_full_sync_at))+'</small></span>':''}
         ${gs?'<span class="game-heat-pill '+gameStateTone(gs)+'"><strong>'+Math.round(Number(gs.temperature||0))+'°</strong><span>'+safe(gs.game_state_label)+'</span><small>'+Math.round(Number(gs.conversion_percent||0))+'%</small></span>':''}
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
+        ${notificationBell(state)}
         <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Forzar sincronización"><i data-lucide="refresh-cw"></i></button>
       </div>
     </header>`;
@@ -1632,6 +1637,7 @@ function bind(){
   $('#load-analytics')?.addEventListener('click',loadAnalytics);
   $('#load-automations')?.addEventListener('click',loadAutomations);
   bindOperation({state,db,renderApp,toast,openAdminLoginModal});
+  bindNotifications({state,db,renderApp,toast});
 }
 
 
