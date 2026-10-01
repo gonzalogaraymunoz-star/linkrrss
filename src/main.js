@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connection.js';
 import './style.css';
+import { operationSection, bindOperation } from './operation.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -62,13 +63,17 @@ const state = {
   activityCommentsLoadedKey: null,
   analyticsTab: 'overview',
   analyticsSort: 'recent',
-  autoOpenedDraft: null
+  autoOpenedDraft: null,
+  operationPlans: [],
+  operationTasks: [],
+  operationView: 'direction'
 };
 
 const nav = [
   ['home','Inicio',Home],
   ['inbox','Conversaciones',MessageCircle],
   ['content','Contenido',FileText],
+  ['operation','Operación',Activity],
   ['calendar','Calendario',CalendarDays],
   ['analytics','Analytics',ChartNoAxesCombined],
   ['connections','Conexiones',PlugZap],
@@ -205,7 +210,7 @@ async function loadBusiness(opts={}){
 
   const accountIds=state.accounts.map(x=>x.id);
   if(state.canManage){
-    const [ws,snaps,runs,activity,posts,conversations,memory,drafts]=await Promise.all([
+    const [ws,snaps,runs,activity,posts,conversations,memory,drafts,operationPlans,operationTasks]=await Promise.all([
       db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
       db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
       db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12),
@@ -223,7 +228,9 @@ async function loadBusiness(opts={}){
         : Promise.resolve({data:[]}),
       accountIds.length
         ? db.from('link_rrss_publication_drafts').select('*').eq('business_id',id).in('account_id',accountIds).order('created_at',{ascending:false}).limit(200)
-        : Promise.resolve({data:[]})
+        : Promise.resolve({data:[]}),
+      db.from('link_rrss_operation_plans').select('*').eq('business_id',id).order('period_start',{ascending:false}).limit(24),
+      db.from('link_rrss_operation_tasks').select('*').eq('business_id',id).order('planned_at',{ascending:true})
     ]);
     state.workspace=ws.data||{business_id:id,last_section:'home',sync_interval_minutes:5,last_sync_status:'idle',ui_state:{}};
     state.snapshots=snaps.data||[];
@@ -233,6 +240,8 @@ async function loadBusiness(opts={}){
     state.persistentConversations=conversations.data||[];
     state.accountMemory=memory.data||[];
     state.publicationDrafts=drafts.data||[];
+    state.operationPlans=operationPlans.data||[];
+    state.operationTasks=operationTasks.data||[];
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -246,7 +255,7 @@ async function loadBusiness(opts={}){
       db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
       db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
     ]);
-    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[];
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[];
     state.persistentPosts=posts.data||[];
     state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -625,7 +634,7 @@ function topbar(){
 
 function sectionNav(){
   return `<nav class="section-nav">${nav.map(([id,label])=>`
-    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',inbox:'message-circle',content:'file-text',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
+    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',inbox:'message-circle',content:'file-text',calendar:'calendar-days',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function accountStrip(){
@@ -1497,6 +1506,7 @@ function bodySection(){
   if(state.section==='connections') return connectionsSection();
   if(state.section==='inbox') return inboxSection();
   if(state.section==='content') return contentSection();
+  if(state.section==='operation') return operationSection({state});
   if(state.section==='calendar') return calendarSection();
   if(state.section==='analytics') return analyticsSection();
   if(state.section==='automations') return automationsSection();
@@ -1612,6 +1622,7 @@ function bind(){
   $('#load-content')?.addEventListener('click',loadContent);
   $('#load-analytics')?.addEventListener('click',loadAnalytics);
   $('#load-automations')?.addEventListener('click',loadAutomations);
+  bindOperation({state,db,renderApp,toast,openAdminLoginModal});
 }
 
 
