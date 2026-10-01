@@ -169,9 +169,17 @@ async function loadBase(){
     name:x.business_name
   }));
 
-  const requested=new URLSearchParams(location.search).get('business');
+  const params=new URLSearchParams(location.search);
+  const requested=params.get('business');
   state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
   await loadBusiness({restore:true});
+  const requestedSection=params.get('section');
+  if(requestedSection && nav.some(x=>x[0]===requestedSection)){
+    state.section=requestedSection;
+    syncUrl();
+    renderApp();
+    persistWorkspace();
+  }
   await handleZernioReturn();
   await handleRecoveryFlow();
 }
@@ -557,6 +565,7 @@ function syncUrl(){
   if(!state.business) return;
   const u=new URL(location.href);
   u.searchParams.set('business',state.business.id);
+  u.searchParams.set('section',state.section);
   history.replaceState({},'',u);
 }
 
@@ -1543,7 +1552,7 @@ function bind(){
   document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{
     state.section=btn.dataset.section;
     state.panelRefreshAt.delete([state.business?.id,state.activeAccount?.id||'source',state.section].join(':'));
-    renderApp(); persistWorkspace();
+    syncUrl(); renderApp(); persistWorkspace();
   });
   document.querySelectorAll('[data-section-jump]').forEach(btn=>btn.onclick=()=>{
     state.section=btn.dataset.sectionJump;
