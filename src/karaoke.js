@@ -434,6 +434,7 @@ function bindAdminCommon(){
     const u=new URL(location.href);u.searchParams.set('site',e.target.value);location.href=u.toString();
   });
   $('#karaoke-sync')?.addEventListener('click',()=>syncAndIngest(true));
+  if('Notification' in window&&Notification.permission==='default') Notification.requestPermission().catch(()=>null);
   $$('[data-karaoke-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.karaokeTab;renderAdmin();});
   $$('[data-go-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.goTab;renderAdmin();});
 }
@@ -552,12 +553,12 @@ async function refreshAdminData(){
   renderAdmin();
 }
 
-function scheduleAdminSync(delay=45000){
+function scheduleAdminSync(delay=5000){
   clearTimeout(state.timer);
   if(!state.session)return;
   state.timer=setTimeout(async()=>{
     await syncAndIngest(false).catch(e=>console.warn(e));
-    scheduleAdminSync(Number(state.site.settings?.sync_seconds||45)*1000);
+    scheduleAdminSync(5000);
   },delay);
 }
 
@@ -570,11 +571,11 @@ async function syncAndIngest(manual=false){
     const result=await ingestCurrentSession();
     await loadAdminSite();
     renderAdmin();
-    if(manual||result.created>0||result.matched>0) toast(result.created?result.created+' canción(es) nueva(s) detectada(s).':'Instagram sincronizado.');
+    if(result.created>0){ toast(result.created+' pedido(s) nuevo(s) desde Instagram.'); try{if('Notification' in window&&Notification.permission==='granted')new Notification('LINK Karaoke',{body:result.created+' nuevo(s) pedido(s) para el DJ'});}catch{} } else if(manual) toast('LINKRRSS revisado. No hay pedidos nuevos.');
   }catch(e){
     console.error(e);if(manual)toast(e.message||String(e),true);
   }finally{
-    state.syncing=false;renderAdmin();scheduleAdminSync(Number(state.site.settings?.sync_seconds||45)*1000);
+    state.syncing=false;renderAdmin();scheduleAdminSync(5000);
   }
 }
 
