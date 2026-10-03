@@ -115,12 +115,16 @@ function renderJoin(){
   const root=$('#app');
   const ig='@'+state.site.instagram_username;
   if(!state.session){
-    root.innerHTML=`<main class="karaoke-shell public join-page"><section class="join-card closed">
-      <div class="karaoke-wordmark">LINK <b>Karaoke</b></div>
-      <span class="pill"> ${safe(state.site.name)} </span>
-      <h1>El karaoke no está abierto todavía.</h1>
-      <p>Cuando el anfitrión abra la noche, este mismo QR te permitirá entrar y pedir tu canción.</p>
-      <a href="https://instagram.com/${encodeURIComponent(state.site.instagram_username)}" target="_blank" rel="noopener">Ver ${safe(ig)} en Instagram</a>
+    const instagramQr='https://www.instagram.com/caracol_barrestaurant?stkn=emU3ZTJta3BtYnIx&utm_source=qr';
+    root.innerHTML=`<main class="karaoke-shell public join-page"><section class="join-card">
+      <div class="karaoke-wordmark">CARACOL <b>Karaoke</b></div>
+      <span class="pill">KARAOKE · ${safe(state.site.name)}</span>
+      <h1>¿Quieres cantar?</h1>
+      <p class="join-lead">Hazlo en dos pasos. Síguenos en Instagram y escríbenos por mensaje la canción que quieres cantar.</p>
+      <div class="join-steps"><span>1</span><p><b>Sigue a ${safe(ig)}</b><small>Abre nuestro Instagram desde el botón.</small></p><span>2</span><p><b>Escríbenos tu canción por DM</b><small>Ejemplo: El Rey — Vicente Fernández.</small></p></div>
+      <a class="karaoke-primary anchor" href="${instagramQr}" target="_blank" rel="noopener">Abrir Instagram <span>↗</span></a>
+      <div class="dm-example"><span>DM</span><p>“Quiero cantar: canción — artista”</p></div>
+      <small class="join-foot">Cuando la noche esté abierta, esta misma página también te permitirá entrar a la cola del karaoke.</small>
     </section></main>`;
     return;
   }
