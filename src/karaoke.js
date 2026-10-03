@@ -367,8 +367,8 @@ function requestsSection(){
   const pending=pendingRequests();
   const joinsWaiting=state.joins.filter(j=>j.status==='pending'||j.status==='matched');
   return `<section class="requests-panel">
-    <div class="section-title"><div><span>INSTAGRAM → KARAOKE</span><h1>Solicitudes</h1><p>Los DMs que LINK reconoce después del ingreso por QR aparecen aquí.</p></div><button id="karaoke-sync-requests">↻ Buscar mensajes</button></div>
-    ${pending.length?'<div class="request-cards">'+pending.map(requestCard).join('')+'</div>':'<div class="big-empty"><div>✓</div><h2>No hay solicitudes pendientes.</h2><p>Cuando llegue un DM nuevo de alguien que entró por el QR, aparecerá aquí.</p></div>'}
+    <div class="section-title"><div><span>INSTAGRAM → KARAOKE</span><h1>Solicitudes</h1><p>Lee los DMs de Caracol en LINKRRSS y carga aquí las canciones en orden de llegada.</p></div><button id="karaoke-sync-requests">↻ Buscar mensajes</button></div>
+    ${pending.length?'<div class="request-cards">'+pending.map(requestCard).join('')+'</div>':'<div class="big-empty"><div>✓</div><h2>No hay solicitudes pendientes.</h2><p>Pulsa Buscar mensajes para cargar los nuevos pedidos de Instagram.</p></div>'}
     ${joinsWaiting.length?'<div class="waiting-joins"><span>ESPERANDO DM</span>'+joinsWaiting.map(j=>`<article><b>@${safe(j.instagram_username)}</b><small>${j.conversation_id?'Conversación detectada · esperando canción':'Entró por QR · todavía sin conversación'}</small></article>`).join('')+'</div>':''}
   </section>`;
 }
@@ -567,13 +567,16 @@ async function syncAndIngest(manual=false){
   state.syncing=true;renderAdmin();
   try{
     await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'karaoke_manual':'karaoke_app'});
-    await sleep(450);
-    const result=await ingestCurrentSession();
+    await sleep(650);
+    const {data:created,error:refreshError}=await db.rpc('link_karaoke_refresh_from_linkrrss',{p_site_slug:state.site.slug});
+    if(refreshError)throw refreshError;
     await loadAdminSite();
     renderAdmin();
-    if(result.created>0){ toast(result.created+' pedido(s) nuevo(s) desde Instagram.'); try{if('Notification' in window&&Notification.permission==='granted')new Notification('LINK Karaoke',{body:result.created+' nuevo(s) pedido(s) para el DJ'});}catch{} } else if(manual) toast('LINKRRSS revisado. No hay pedidos nuevos.');
+    const n=Number(created||0);
+    if(n>0)toast(n+' canción(es) nueva(s) cargada(s).');
+    else if(manual)toast('Actualizado. No hay canciones nuevas.');
   }catch(e){
-    console.error(e);if(manual)toast(e.message||String(e),true);
+    console.error(e);toast('No se pudo actualizar LINKRRSS: '+(e.message||String(e)),true);
   }finally{
     state.syncing=false;renderAdmin();scheduleAdminSync(5000);
   }
