@@ -31,7 +31,7 @@ const state={
   singers:[],
   requests:[],
   sources:[],
-  tab:'stage',
+  tab:'requests',
   syncing:false,
   sessionAuth:null,
   canManage:false,
@@ -307,7 +307,7 @@ function renderAdmin(){
     return;
   }
 
-  const tabs=[['stage','Escenario'],['requests','Solicitudes'],['community','Comunidad'],['ranking','Ranking'],['local','Local']];
+  const tabs=[['requests','Pedidos'],['stage','Escenario'],['community','Comunidad'],['ranking','Ranking'],['local','Local']];
   root.innerHTML=`<main class="karaoke-shell admin">${adminHeader()}
     <nav class="karaoke-tabs">${tabs.map(([id,label])=>`<button data-karaoke-tab="${id}" class="${state.tab===id?'active':''}">${label}${id==='requests'?'<span>'+pendingRequests().length+'</span>':''}</button>`).join('')}</nav>
     <section class="karaoke-admin-body">${adminSection()}</section>
