@@ -4,6 +4,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connec
 import './style.css';
 import { operationSection, bindOperation } from './operation.js';
 import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
+import { bootKaraokeRoute } from './karaoke.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -2147,7 +2148,9 @@ async function loadContent(){return maybeAutoSync(true);}
 async function loadAnalytics(){return maybeAutoSync(true);}
 async function loadAutomations(){return maybeAutoSync(true);}
 
-if(location.pathname==='/oauth/consent'){
+if(bootKaraokeRoute()){
+  // LINK Karaoke owns /karaoke, /karaoke/join/:site and /karaoke/board/:site.
+}else if(location.pathname==='/oauth/consent'){
   handleOAuthConsentPage().catch(e=>{
     $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir la autorización LINK.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
   });
