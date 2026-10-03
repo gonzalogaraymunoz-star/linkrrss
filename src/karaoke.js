@@ -38,6 +38,7 @@ const state={
   timer:null,
   channels:[],
   boardTimer:null,
+  resultTimer:null,
   notice:'',
   error:''
 };
@@ -172,12 +173,18 @@ async function submitJoin(e){
     button.disabled=false;button.innerHTML='Entrar al karaoke <span>→</span>';
     return;
   }
-  renderJoinSuccess(handle,artistic,error?.code==='23505');
+  await renderJoinSuccess(handle,artistic,error?.code==='23505');
 }
 
-function renderJoinSuccess(handle,artistic,already=false){
+async function renderJoinSuccess(handle,artistic,already=false){
   const root=$('#app');
   const profile='https://instagram.com/'+encodeURIComponent(state.site.instagram_username);
+  const {data:community}=await db.from('link_karaoke_public_profiles')
+    .select('singer_id,artistic_name,public_avatar_url,instagram_username,instagram_url,updated_at')
+    .eq('site_id',state.site.id).order('updated_at',{ascending:false}).limit(12);
+  const communityMarkup=(community||[]).length
+    ? '<div class="public-community"><div class="public-community-head"><span>COMUNIDAD</span><small>'+community.length+' perfiles recientes</small></div><div class="public-community-grid">'+community.map(p=>'<a href="'+safe(p.instagram_url||'#')+'" target="_blank" rel="noopener" class="'+(p.instagram_url?'':'disabled')+'"><div>'+(p.public_avatar_url?'<img src="'+safe(p.public_avatar_url)+'" alt="">':safe((p.artistic_name||'?')[0].toUpperCase()))+'</div><b>'+safe(p.artistic_name)+'</b>'+(p.instagram_username?'<small>@'+safe(p.instagram_username)+'</small>':'<small>Perfil privado</small>')+'</a>').join('')+'</div></div>'
+    : '';
   root.innerHTML=`<main class="karaoke-shell public join-page"><section class="join-card success">
     <div class="karaoke-wordmark">LINK <b>Karaoke</b></div>
     <div class="success-mark">✓</div>
@@ -187,6 +194,7 @@ function renderJoinSuccess(handle,artistic,already=false){
     <a class="karaoke-primary anchor" href="${profile}" target="_blank" rel="noopener">Abrir Instagram <span>↗</span></a>
     <div class="dm-example"><span>DM</span><p>“El Rey — Vicente Fernández”</p></div>
     <small class="join-foot">Puedes pedir más de una canción. Cada mensaje nuevo queda asociado a tu misma ficha.</small>
+    ${communityMarkup}
   </section></main>`;
 }
 
@@ -208,6 +216,9 @@ async function bootAdmin(){
   await loadAdminSite();
   renderAdmin();
   bindAdminRealtime();
+  if(state.account&&!state.session){
+    setTimeout(()=>invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:'karaoke_app_open'}).catch(e=>console.warn('karaoke open sync',e)),80);
+  }
   scheduleAdminSync(600);
 }
 
@@ -705,7 +716,7 @@ async function ensureSinger(join,conv){
     if(privateProfileError)console.warn('private profile',privateProfileError);
   }
 
-  if(newSinger){
+  if(newSinger||join.status==='pending'||!join.conversation_id){
     const {error:joinInteractionError}=await db.from('link_interactions').insert({
       person_id:person.id,business_id:state.site.business_id,action_type:'karaoke_join',
       channel:'instagram',source:'link_karaoke',confidence:'observed',
@@ -808,6 +819,7 @@ function bindAdminRealtime(){
 function stopTimersAndChannels(){
   clearTimeout(state.timer);state.timer=null;
   clearTimeout(state.boardTimer);state.boardTimer=null;
+  clearTimeout(state.resultTimer);state.resultTimer=null;
   for(const c of state.channels)db.removeChannel(c);
   state.channels=[];
 }
@@ -844,7 +856,14 @@ function renderBoard(){
   }
   const current=currentRequest(),queue=queuedRequests(),recent=completedRequests().sort((a,b)=>new Date(b.completed_at)-new Date(a.completed_at)).slice(0,3);
   const currentSinger=current?requestSinger(current):null;
+  const latest=recent[0]||null;
+  const latestAge=latest?.completed_at?Date.now()-new Date(latest.completed_at).getTime():Infinity;
+  const showResult=!current&&latest&&latest.host_score!==null&&latestAge>=0&&latestAge<14000;
+  const latestSinger=showResult?requestSinger(latest):null;
+  clearTimeout(state.resultTimer);
+  if(showResult) state.resultTimer=setTimeout(async()=>{await loadBoardData();renderBoard();},Math.max(500,14200-latestAge));
   root.innerHTML=`<main class="karaoke-board">
+    ${showResult?`<div class="board-result-card"><span>FICHA FINAL</span><h2>${safe(latestSinger?.artistic_name||'Cantante')}</h2><p>${safe(latest.song_title)}</p><strong>${Number(latest.host_score).toFixed(1)}</strong><small>NOTA DEL ANFITRIÓN</small></div>`:''}
     <header><div class="board-brand">LINK <b>Karaoke</b></div><div class="board-live"><i></i> EN VIVO · ${safe(state.site.name)}</div></header>
     <section class="board-main">
       <div class="board-now"><span>CANTANDO AHORA</span>${current?`<h1>${safe(currentSinger?.artistic_name||'Cantante')}</h1><h2>${safe(current.song_title)}</h2><p>${safe(current.song_artist||'')}</p>`:'<h1>Escenario libre</h1><h2>La próxima canción está por comenzar.</h2>'}</div>
