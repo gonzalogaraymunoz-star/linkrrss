@@ -34,3 +34,24 @@
 .public-community{margin-top:22px;padding-top:18px;border-top:1px solid #ecece8;text-align:left}.public-community-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.public-community-head span{font-size:8px;font-weight:850;letter-spacing:.13em;color:#777}.public-community-head small{font-size:8px;color:#aaa}.public-community-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.public-community-grid a{min-width:0;background:#f6f6f2;border-radius:11px;padding:9px 5px;text-align:center;text-decoration:none;display:grid;justify-items:center;gap:4px}.public-community-grid a.disabled{pointer-events:none}.public-community-grid a>div{width:36px;height:36px;border-radius:50%;background:#e8e8e2;display:grid;place-items:center;font-size:11px;font-weight:850;overflow:hidden}.public-community-grid img{width:100%;height:100%;object-fit:cover}.public-community-grid b{font-size:8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.public-community-grid small{font-size:7px;color:#999;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .board-result-card{position:fixed;z-index:60;inset:0;background:rgba(10,10,11,.94);backdrop-filter:blur(20px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;animation:resultIn .35s ease}.board-result-card>span{font-size:12px;letter-spacing:.18em;color:#777;font-weight:850}.board-result-card h2{font-size:clamp(60px,8vw,132px);line-height:.86;letter-spacing:-.07em;margin:28px 0 13px}.board-result-card p{font-size:clamp(24px,3vw,44px);letter-spacing:-.035em;color:#aaa;margin:0 0 40px}.board-result-card strong{font-size:clamp(100px,15vw,240px);line-height:.7;letter-spacing:-.08em}.board-result-card small{margin-top:28px;font-size:10px;letter-spacing:.16em;color:#666}@keyframes resultIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
 @media(max-width:620px){.public-community-grid{grid-template-columns:repeat(3,1fr)}.board-result-card h2{font-size:56px}.board-result-card strong{font-size:110px}}
+
+/* DJ compact request stream: conversation order, mobile-first */
+.request-cards{display:flex;flex-direction:column;gap:7px}
+.request-card{border-radius:12px;padding:10px 11px;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"person actions" "song actions";gap:5px 10px}
+.request-person{grid-area:person;grid-template-columns:28px minmax(0,1fr) auto;gap:7px}
+.request-person .mini-avatar{width:28px;height:28px;font-size:9px}
+.request-person b{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.request-person a{font-size:8px}
+.request-person>small{font-size:8px}
+.request-song{grid-area:song;padding-left:35px}
+.request-song h2{font-size:15px;line-height:1.12;letter-spacing:-.025em;margin:0}
+.request-song p{font-size:9px;margin:2px 0 0}
+.request-actions{grid-area:actions;align-self:center;display:flex;gap:4px}
+.request-actions>button,.request-actions>button:not(.karaoke-primary){min-height:30px;border-radius:8px;padding:0 8px;font-size:8px}
+.request-actions .karaoke-primary{margin-left:0}
+@media(max-width:640px){
+ .request-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"person" "song" "actions";gap:6px}
+ .request-song{padding-left:35px}
+ .request-actions{padding-left:35px;align-self:auto}
+ .request-actions .karaoke-primary{flex:1}
+}
