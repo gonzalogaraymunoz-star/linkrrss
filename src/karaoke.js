@@ -375,9 +375,11 @@ function requestsSection(){
 
 function requestCard(r){
   const s=requestSinger(r);
-  return `<article class="request-card"><div class="request-person"><div class="mini-avatar">${safe((s?.artistic_name||s?.instagram_username||'?')[0].toUpperCase())}</div><div><b>${safe(s?.artistic_name||s?.participant_name||'Cantante')}</b><a href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">@${safe(s?.instagram_username||'')}</a></div><small>${safe(fmtTime(r.requested_at))}</small></div>
-    <div class="request-song"><span>QUIERE CANTAR</span><h2>${safe(r.song_title)}</h2><p>${safe(r.song_artist||'Artista no indicado')}</p></div>
-    <div class="request-actions"><button data-edit-request="${r.id}">Editar</button><button data-cancel-request="${r.id}">Descartar</button><button class="karaoke-primary compact" data-queue-request="${r.id}">Añadir a la cola →</button></div></article>`;
+  return `<article class="request-card">
+    <div class="request-person"><div class="mini-avatar">${safe((s?.artistic_name||s?.instagram_username||'?')[0].toUpperCase())}</div><div><b>${safe(s?.artistic_name||s?.participant_name||'Cantante')}</b><a href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">@${safe(s?.instagram_username||'')}</a></div><small>${safe(fmtTime(r.requested_at))}</small></div>
+    <div class="request-song"><h2>${safe(r.song_title)}</h2>${r.song_artist?`<p>${safe(r.song_artist)}</p>`:''}</div>
+    <div class="request-actions"><button class="karaoke-primary compact" data-queue-request="${r.id}">+ Cola</button><button data-edit-request="${r.id}">Editar</button><button data-cancel-request="${r.id}">×</button></div>
+  </article>`;
 }
 
 function singerStats(singerId){
