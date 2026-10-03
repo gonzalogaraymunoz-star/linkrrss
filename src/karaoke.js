@@ -295,25 +295,35 @@ function adminHeader(){
 function renderAdmin(){
   const root=$('#app');
   if(!state.session){
-    root.innerHTML=`<main class="karaoke-shell admin">${adminHeader()}<section class="night-closed">
-      <span class="eyebrow">LOCAL / ${safe(state.site.name.toUpperCase())}</span><h1>La noche todavía no está abierta.</h1>
-      <p>Al abrirla, LINK sincroniza el Inbox de Instagram, reconoce a quienes entren por QR y comienza a formar la cola.</p>
-      <div class="night-flow"><b>QR</b><i>→</i><b>Instagram</b><i>→</i><b>DM</b><i>→</i><b>Solicitud</b><i>→</i><b>Escenario</b></div>
-      <button class="karaoke-primary" id="open-karaoke-night">Abrir karaoke ahora</button>
-      <a class="subtle-link" href="/karaoke/board/${safe(state.site.slug)}" target="_blank">Abrir pantalla pública ↗</a>
-    </section></main>`;
-    bindAdminCommon();
+    root.innerHTML=`<main class="karaoke-shell admin spotify-dj"><section class="spotify-empty"><div class="karaoke-wordmark">LINK <b>Karaoke</b></div><h1>Karaoke cerrado</h1><button class="karaoke-primary" id="open-karaoke-night">Abrir karaoke</button></section></main>`;
     $('#open-karaoke-night').onclick=openNight;
     return;
   }
-
-  const tabs=[['requests','Pedidos'],['stage','Escenario'],['community','Comunidad'],['ranking','Ranking'],['local','Local']];
-  root.innerHTML=`<main class="karaoke-shell admin">${adminHeader()}
-    <nav class="karaoke-tabs">${tabs.map(([id,label])=>`<button data-karaoke-tab="${id}" class="${state.tab===id?'active':''}">${label}${id==='requests'?'<span>'+pendingRequests().length+'</span>':''}</button>`).join('')}</nav>
-    <section class="karaoke-admin-body">${adminSection()}</section>
+  root.innerHTML=`<main class="karaoke-shell admin spotify-dj">
+    <header class="spotify-top"><div><small>LINK KARAOKE</small><h1>${safe(state.site.name)}</h1></div><button id="karaoke-sync" aria-label="Actualizar">↻</button></header>
+    <section class="spotify-list-head"><span>#</span><span>Canción</span><span>Cantante</span><span></span></section>
+    <section class="spotify-song-list">${selectionList()}</section>
   </main>`;
   bindAdminCommon();
   bindAdminSection();
+}
+
+function selectionRequests(){
+  return state.requests.filter(r=>['pending','queued'].includes(r.status)).sort((a,b)=>new Date(a.requested_at)-new Date(b.requested_at));
+}
+function selectionList(){
+  const rows=selectionRequests();
+  if(!rows.length)return '<div class="spotify-empty-list"><h2>Esperando canciones…</h2><p>Los pedidos recuperados aparecen aquí automáticamente.</p></div>';
+  return rows.map((r,i)=>selectionRow(r,i)).join('');
+}
+function selectionRow(r,i){
+  const s=requestSinger(r);
+  return `<article class="spotify-song-row">
+    <span class="spotify-index">${i+1}</span>
+    <div class="spotify-track"><strong>${safe(r.song_title)}</strong><span>${safe(r.song_artist||'Artista por identificar')}</span></div>
+    <a class="spotify-singer" href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">@${safe(s?.instagram_username||'')}</a>
+    <button class="spotify-select ${r.status==='queued'?'selected':''}" data-queue-request="${r.id}">${r.status==='queued'?'✓':'+'}</button>
+  </article>`;
 }
 
 function adminSection(){
