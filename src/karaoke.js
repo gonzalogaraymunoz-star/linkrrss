@@ -566,17 +566,17 @@ async function syncAndIngest(manual=false){
   if(state.syncing||!state.session||!state.site||!state.account)return;
   state.syncing=true;renderAdmin();
   try{
-    await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'karaoke_manual':'karaoke_app'});
-    await sleep(650);
-    const {data:created,error:refreshError}=await db.rpc('link_karaoke_refresh_from_linkrrss',{p_site_slug:state.site.slug});
-    if(refreshError)throw refreshError;
+    await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'linkdot_karaoke_manual':'linkdot_karaoke'});
+    await sleep(700);
+    const {data,error}=await db.functions.invoke('linkdot-karaoke',{body:{site_slug:state.site.slug}});
+    if(error)throw error;
     await loadAdminSite();
     renderAdmin();
-    const n=Number(created||0);
-    if(n>0)toast(n+' canción(es) nueva(s) cargada(s).');
-    else if(manual)toast('Actualizado. No hay canciones nuevas.');
+    const n=Number(data?.created||0);
+    if(n>0)toast('LINKDOT Karaoke recuperó '+n+' canción(es).');
+    else if(manual)toast('LINKDOT Karaoke revisó LINKRRSS. Sin canciones nuevas.');
   }catch(e){
-    console.error(e);toast('No se pudo actualizar LINKRRSS: '+(e.message||String(e)),true);
+    console.error(e);toast('LINKDOT Karaoke: '+(e.message||String(e)),true);
   }finally{
     state.syncing=false;renderAdmin();scheduleAdminSync(5000);
   }
