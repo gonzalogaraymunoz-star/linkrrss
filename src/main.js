@@ -69,11 +69,15 @@ const state = {
   operationPlans: [],
   operationTasks: [],
   operationView: 'direction',
-  notifications: []
+  notifications: [],
+  dotWorkspace: null,
+  dotSubdots: [],
+  dotArtifacts: []
 };
 
 const nav = [
   ['home','Inicio',Home],
+  ['artifacts','Artefactos',Workflow],
   ['inbox','Conversaciones',MessageCircle],
   ['content','Contenido',FileText],
   ['operation','Operación',Activity],
@@ -187,6 +191,39 @@ async function loadBase(){
   await handleRecoveryFlow();
 }
 
+async function loadDotWorkspace(){
+  state.dotWorkspace=null;
+  state.dotSubdots=[];
+  state.dotArtifacts=[];
+  if(!state.canManage)return;
+
+  const ws=await db.from('link_dot_workspaces')
+    .select('*')
+    .eq('workspace_key','linkrrss-mar')
+    .eq('status','active')
+    .maybeSingle();
+  if(ws.error) throw ws.error;
+  if(!ws.data)return;
+
+  const [subs,arts]=await Promise.all([
+    db.from('link_dot_workspace_subdots')
+      .select('*')
+      .eq('workspace_id',ws.data.id)
+      .eq('status','active')
+      .order('sort_order'),
+    db.from('link_dot_artifacts')
+      .select('*')
+      .eq('workspace_id',ws.data.id)
+      .neq('status','archived')
+      .order('created_at')
+  ]);
+  if(subs.error) throw subs.error;
+  if(arts.error) throw arts.error;
+  state.dotWorkspace=ws.data;
+  state.dotSubdots=subs.data||[];
+  state.dotArtifacts=(arts.data||[]).filter(a=>!a.business_id||a.business_id===state.business?.id);
+}
+
 async function loadBusiness(opts={}){
   if(!state.business){ renderApp(); return; }
   const { id } = state.business;
@@ -254,6 +291,7 @@ async function loadBusiness(opts={}){
     state.operationPlans=operationPlans.data||[];
     state.operationTasks=operationTasks.data||[];
     await loadNotifications({db,state});
+    await loadDotWorkspace();
 
     if((businessChanged||opts.restore) && state.workspace?.last_section && nav.some(x=>x[0]===state.workspace.last_section)){
       state.section=state.workspace.last_section;
@@ -267,7 +305,7 @@ async function loadBusiness(opts={}){
       db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
       db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
     ]);
-    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[]; state.notifications=[];
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[]; state.notifications=[]; state.dotWorkspace=null; state.dotSubdots=[]; state.dotArtifacts=[];
     state.persistentPosts=posts.data||[];
     state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -649,7 +687,7 @@ function topbar(){
 
 function sectionNav(){
   return `<nav class="section-nav">${nav.map(([id,label])=>`
-    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',inbox:'message-circle',content:'file-text',calendar:'calendar-days',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
+    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',artifacts:'workflow',inbox:'message-circle',content:'file-text',calendar:'calendar-days',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function accountStrip(){
@@ -1516,8 +1554,71 @@ function activitySection(){
 
 function noAccounts(title){return `<section class="empty-apparatus small"><span class="eyebrow">${safe(title.toUpperCase())}</span><h1>Primero conecta una cuenta.</h1><p>Ve a Conexiones y añade una fuente Zernio. LINK detectará automáticamente las cuentas disponibles.</p><button class="primary" data-section-jump="connections">Ir a Conexiones</button></section>`;}
 
+function artifactStatusLabel(status='active'){
+  return ({active:'Activo',attention:'Requiere atención',building:'En construcción',paused:'Pausado'})[status]||status;
+}
+function artifactHref(artifact){
+  const route=artifact?.route||'#';
+  if(!route.startsWith('/?')||route.includes('business='))return route;
+  try{
+    const u=new URL(route,location.origin);
+    if(state.business?.id)u.searchParams.set('business',state.business.id);
+    return u.pathname+u.search;
+  }catch{return route;}
+}
+function artifactsSection(){
+  if(!state.canManage){
+    return `<section class="empty-apparatus small"><span class="eyebrow">ESPACIO LINKDOT</span><h1>Artefactos internos de LINK.</h1><p>Este espacio muestra trabajo persistente, SubLinkDots y fuentes de verdad solo a miembros autorizados.</p><button class="primary" id="admin-empty">Administrar</button></section>`;
+  }
+  const w=state.dotWorkspace;
+  if(!w){
+    return `<section class="empty-apparatus small"><span class="eyebrow">LINKDOT MAR</span><h1>El espacio todavía no está disponible.</h1><p>No se encontró la definición persistente de LINKRRSS · MAR.</p></section>`;
+  }
+  const total=state.dotArtifacts.length;
+  const specific=state.dotArtifacts.filter(a=>a.business_id===state.business?.id).length;
+  const attention=state.dotArtifacts.filter(a=>a.status==='attention'||a.status==='building').length;
+  const subdotBlocks=state.dotSubdots.map((s,index)=>{
+    const artifacts=state.dotArtifacts.filter(a=>a.subdot_id===s.id);
+    return `<article class="dot-lane">
+      <header class="dot-lane-head">
+        <div class="subdot-node"><span>${String(index+1).padStart(2,'0')}</span></div>
+        <div><span class="eyebrow">LINKSUBDOT</span><h2>${safe(s.name)}</h2><p>${safe(s.responsibility)}</p></div>
+        <b>${artifacts.length}</b>
+      </header>
+      <div class="artifact-grid">
+        ${artifacts.length?artifacts.map(a=>`<a class="artifact-card status-${safe(a.status)}" href="${safe(artifactHref(a))}">
+          <div class="artifact-card-top"><span>${safe((a.artifact_type||'artefacto').toUpperCase())}</span><i>${safe(artifactStatusLabel(a.status))}</i></div>
+          <h3>${safe(a.name)}</h3>
+          <p>${safe(a.description||'')}</p>
+          <div class="artifact-work"><span>TRABAJO ESPECÍFICO</span><strong>${safe(a.work_definition)}</strong></div>
+          <footer><span>${safe(a.source_table?'Persistente · '+a.source_table:'Persistente')}</span><b>Abrir →</b></footer>
+        </a>`).join(''):`<div class="artifact-empty"><span>SIN ARTEFACTOS</span><p>Este SubLinkDot ya tiene responsabilidad definida; todavía no tiene un artefacto operativo asociado en este negocio.</p></div>`}
+      </div>
+    </article>`;
+  }).join('');
+  return `<section class="dot-workspace">
+    <header class="dot-workspace-hero">
+      <div class="linkdot-node"><small>LINKDOT</small><strong>MAR</strong><span>Marketing & RRSS</span></div>
+      <div class="dot-workspace-copy">
+        <span class="eyebrow">ESPACIO DE TRABAJO / LINKRRSS</span>
+        <h1>MAR trabaja aquí.</h1>
+        <p>${safe(w.description||'')}</p>
+        <div class="workspace-flow"><span>Atención</span><i>→</i><span>Artefactos</span><i>→</i><span>Identidad contactable</span><i>→</i><strong>BEL</strong></div>
+      </div>
+    </header>
+    <div class="workspace-stats">
+      <article><strong>5</strong><span>SubLinkDots</span></article>
+      <article><strong>${total}</strong><span>Artefactos visibles</span></article>
+      <article><strong>${specific}</strong><span>Específicos de ${safe(state.business?.name||'negocio')}</span></article>
+      <article><strong>${attention}</strong><span>Por completar</span></article>
+    </div>
+    <div class="dot-lanes">${subdotBlocks}</div>
+  </section>`;
+}
+
 function bodySection(){
   if(!state.business) return '<section class="empty-apparatus"><h1>No hay negocios en LINK WORLD.</h1></section>';
+  if(state.section==='artifacts') return artifactsSection();
   if(state.section==='connections') return connectionsSection();
   if(state.section==='inbox') return inboxSection();
   if(state.section==='content') return contentSection();
@@ -1537,8 +1638,8 @@ function renderApp(){
       <main class="main">
         ${topbar()}
         ${sectionNav()}
-        ${accountStrip()}
-        ${state.section==='connections'?'':periodControls()}
+        ${state.section==='artifacts'?'':accountStrip()}
+        ${['connections','artifacts'].includes(state.section)?'':periodControls()}
         <div class="content">${bodySection()}</div>
       </main>
     </div>
@@ -1660,6 +1761,7 @@ async function loadHistoryIfNeeded(){
 }
 
 async function loadCurrentSection(){
+  if(state.section==='artifacts')return;
   if(!state.canManage||!state.business||!state.sources.length)return;
   const key=[state.business.id,state.activeAccount?.id||'source',state.section].join(':');
   const last=state.panelRefreshAt.get(key)||0;
