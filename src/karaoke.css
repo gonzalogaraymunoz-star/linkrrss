@@ -85,3 +85,31 @@
  .karaoke-admin .request-card{grid-template-columns:minmax(0,1fr) 44px;grid-template-areas:"song actions" "person actions";padding:11px 10px}
  .karaoke-admin .request-song,.karaoke-admin .request-actions,.karaoke-admin .request-person{padding-left:0}
 }
+
+/* Spotify-inspired Karaoke dashboard */
+.karaoke-admin{background:#121212!important;color:#fff!important}
+.karaoke-admin .karaoke-shell,.karaoke-admin main,.karaoke-admin .requests-panel{background:#121212!important;color:#fff}
+.karaoke-admin .section-title{border:0!important;padding:18px 20px 12px}
+.karaoke-admin .section-title span{color:#b3b3b3!important;letter-spacing:.08em}
+.karaoke-admin .section-title h1{color:#fff!important;font-size:28px;letter-spacing:-.04em}
+.karaoke-admin .section-title p{color:#b3b3b3!important}
+.karaoke-admin .request-cards{gap:2px;padding:0 12px 24px}
+.karaoke-admin .request-card{background:transparent!important;border:0!important;border-radius:6px!important;padding:9px 10px!important;grid-template-columns:minmax(0,1fr) minmax(130px,.55fr) auto!important;grid-template-areas:"song person actions"!important;align-items:center}
+.karaoke-admin .request-card:hover{background:#242424!important}
+.karaoke-admin .request-song{padding:0!important;min-width:0}
+.karaoke-admin .request-song h2{font-size:15px!important;font-weight:600;color:#fff!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.karaoke-admin .request-song p{font-size:13px!important;color:#b3b3b3!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.karaoke-admin .request-person{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center}
+.karaoke-admin .request-person .mini-avatar{width:32px!important;height:32px!important;border-radius:50%;background:#282828!important;color:#fff!important}
+.karaoke-admin .request-person b{font-size:12px;color:#fff!important}
+.karaoke-admin .request-person a,.karaoke-admin .request-person small{font-size:10px;color:#b3b3b3!important}
+.karaoke-admin .request-actions>button.karaoke-primary{background:#1ed760!important;color:#000!important;border:0!important;border-radius:999px!important;font-weight:700;min-height:32px;padding:0 14px}
+@media(max-width:640px){
+.karaoke-admin .section-title{padding:14px 14px 10px}
+.karaoke-admin .section-title h1{font-size:24px}
+.karaoke-admin .request-cards{padding:0 7px 18px}
+.karaoke-admin .request-card{grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"song actions" "person actions"!important;gap:4px 8px!important;padding:9px 8px!important}
+.karaoke-admin .request-person{grid-template-columns:26px minmax(0,1fr) auto}
+.karaoke-admin .request-person .mini-avatar{width:26px!important;height:26px!important}
+.karaoke-admin .request-actions{padding-left:0!important}
+}
