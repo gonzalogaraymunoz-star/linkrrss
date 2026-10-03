@@ -585,7 +585,7 @@ async function ingestCurrentSession(){
   const {data:conversations,error:convError}=await db.from('link_rrss_conversations')
     .select('*').eq('account_id',state.account.id)
     .gte('last_message_at',state.session.opened_at)
-    .order('last_message_at',{ascending:false}).limit(1000);
+    .order('last_message_at',{ascending:true}).limit(1000);
   if(convError)throw convError;
   if(!conversations?.length)return {created:0,matched:0};
 
@@ -593,6 +593,7 @@ async function ingestCurrentSession(){
   const {data:messages,error:msgError}=await db.from('link_rrss_messages')
     .select('*').in('conversation_id',convIds)
     .gte('platform_created_at',state.session.opened_at)
+    .eq('direction','incoming')
     .order('platform_created_at',{ascending:true});
   if(msgError)throw msgError;
 
@@ -603,62 +604,90 @@ async function ingestCurrentSession(){
     used=new Set((usedRows||[]).map(x=>x.source_message_id));
   }
 
+  const byConv=new Map(conversations.map(x=>[x.id,x]));
   let created=0;
-  for(const conv of conversations){
-    const handle=normalizeHandle(conv.participant_username);
-    if(!handle)continue;
+  for(const message of messages||[]){
+    if(used.has(message.id)||!isLikelySong(message.message))continue;
+    const conv=byConv.get(message.conversation_id);
+    if(!conv||!normalizeHandle(conv.participant_username))continue;
     const singer=await ensureSingerFromConversation(conv);
-    const incoming=(messages||[]).filter(m=>
-      m.conversation_id===conv.id&&m.direction==='incoming'&&!used.has(m.id)&&isLikelySong(m.message)
-    );
-    for(const message of incoming){
-      const parsed=parseSong(message.message);
-      if(!parsed.title)continue;
-      const request=await createSongRequestFromDm(singer,conv,message,parsed);
-      if(!request)continue;
-      used.add(message.id);created++;
-      if(state.site.settings?.auto_confirm_request!==false){
-        const txt='🎤 Recibimos “'+parsed.title+'”. Ya quedó en pedidos del karaoke.';
-        sendDm(conv.external_conversation_id,txt,'link-karaoke-confirm-'+request.id).catch(()=>null);
-      }
-    }
+    const parsed=parseSong(message.message);
+    if(!parsed.title)continue;
+    const request=await createSongRequestFromDm(singer,conv,message,parsed);
+    if(!request)continue;
+    used.add(message.id);created++;
   }
   return {created,matched:conversations.length};
 }
 
 async function ensureSingerFromConversation(conv){
   const handle=normalizeHandle(conv.participant_username);
-  const pseudoJoin={
-    id:null,instagram_username:handle,artistic_name:null,public_profile:true,
-    created_at:conv.last_message_at||nowIso(),status:'matched',conversation_id:conv.id
-  };
-  return ensureSinger(pseudoJoin,conv);
+  let person=null;
+  const {data:identifier}=await db.from('link_person_identifiers').select('person_id')
+    .eq('identifier_type','social').eq('provider','instagram').eq('normalized_value',handle).maybeSingle();
+  if(identifier?.person_id){
+    const {data}=await db.from('link_persons').select('*').eq('id',identifier.person_id).maybeSingle();
+    person=data||null;
+  }
+  if(!person){
+    const code='LNK-PER-KARAOKE-'+uid().replaceAll('-','').slice(0,16).toUpperCase();
+    const {data,error}=await db.from('link_persons').insert({
+      universal_code:code,qr_token:uid(),display_name:conv.participant_name||handle,
+      status:'provisional',primary_business_id:state.site.business_id,
+      metadata:{source:'linkrrss_instagram_dm',instagram_username:handle,site_id:state.site.id}
+    }).select().single();
+    if(error)throw error;
+    person=data;
+    const {error:idError}=await db.from('link_person_identifiers').insert({
+      person_id:person.id,identifier_type:'social',provider:'instagram',
+      identifier_value:handle,normalized_value:handle
+    });
+    if(idError&&idError.code!=='23505')throw idError;
+  }
+
+  let {data:singer}=await db.from('link_karaoke_singers').select('*')
+    .eq('site_id',state.site.id).eq('person_id',person.id).maybeSingle();
+  if(!singer){
+    const {data,error}=await db.from('link_karaoke_singers').insert({
+      site_id:state.site.id,person_id:person.id,instagram_username:handle,
+      participant_name:conv.participant_name||null,artistic_name:conv.participant_name||handle,
+      profile_picture:conv.participant_picture||null,public_profile:true,
+      first_joined_at:conv.last_message_at||nowIso(),last_seen_at:nowIso(),
+      metadata:{source:'linkrrss_instagram_dm',conversation_id:conv.id}
+    }).select().single();
+    if(error)throw error;
+    singer=data;
+  }else{
+    const {data}=await db.from('link_karaoke_singers').update({
+      participant_name:conv.participant_name||singer.participant_name,
+      profile_picture:conv.participant_picture||singer.profile_picture,
+      last_seen_at:nowIso(),updated_at:nowIso()
+    }).eq('id',singer.id).select().single();
+    singer=data||singer;
+  }
+  return singer;
 }
 
 async function createSongRequestFromDm(singer,conv,message,parsed){
+  const {data:already}=await db.from('link_karaoke_request_sources').select('request_id').eq('source_message_id',message.id).maybeSingle();
+  if(already)return null;
   const {data,error}=await db.from('link_karaoke_requests').insert({
     site_id:state.site.id,session_id:state.session.id,singer_id:singer.id,
     song_title:parsed.title,song_artist:parsed.artist,status:'pending',
     requested_at:message.platform_created_at||message.created_at||nowIso()
   }).select().single();
-  if(error){console.warn(error);return null;}
+  if(error)throw error;
   const {error:sourceError}=await db.from('link_karaoke_request_sources').insert({
     request_id:data.id,conversation_id:conv.id,source_message_id:message.id,
     external_conversation_id:conv.external_conversation_id,
     external_message_id:message.external_message_id,raw_message:message.message,
-    source_kind:'instagram_dm'
+    source_kind:'linkrrss_instagram_dm'
   });
   if(sourceError){
     await db.from('link_karaoke_requests').delete().eq('id',data.id);
     if(sourceError.code==='23505')return null;
     throw sourceError;
   }
-  const {error:requestInteractionError}=await db.from('link_interactions').insert({
-    person_id:singer.person_id,business_id:state.site.business_id,action_type:'karaoke_song_request',
-    channel:'instagram',source:'link_karaoke',confidence:'observed',
-    metadata:{site_id:state.site.id,session_id:state.session.id,request_id:data.id,source_message_id:message.id}
-  });
-  if(requestInteractionError)console.warn('interaction',requestInteractionError);
   return data;
 }
 
