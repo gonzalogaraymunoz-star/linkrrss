@@ -18,7 +18,22 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const nowIso=()=>new Date().toISOString();
 const fmtTime=v=>v?new Intl.DateTimeFormat('es-CL',{hour:'2-digit',minute:'2-digit'}).format(new Date(v)):'—';
 const fmtDate=v=>v?new Intl.DateTimeFormat('es-CL',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v)):'—';
+const KARAOKE_TZ='America/Santiago';
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+const dateKey=v=>{
+  if(!v)return '';
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:KARAOKE_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(v));
+  const get=t=>parts.find(p=>p.type===t)?.value||'';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+};
+const dateFromKey=key=>new Date(`${key}T12:00:00Z`);
+const formatDayKey=(key,opts={})=>key?new Intl.DateTimeFormat('es-CL',{timeZone:'UTC',...opts}).format(dateFromKey(key)):'';
+const formatCalendarTitle=key=>formatDayKey(key,{weekday:'long',day:'numeric',month:'long'});
+const formatCalendarChip=key=>({
+  weekday:formatDayKey(key,{weekday:'short'}).replace('.','').toUpperCase(),
+  day:formatDayKey(key,{day:'numeric'}),
+  month:formatDayKey(key,{month:'short'}).replace('.','').toUpperCase()
+});
 
 const state={
   mode:null,
@@ -30,6 +45,8 @@ const state={
   joins:[],
   singers:[],
   requests:[],
+  historyRequests:[],
+  selectedDate:null,
   sources:[],
   tab:'requests',
   syncing:false,
@@ -263,20 +280,28 @@ async function loadAdminSite(){
   state.account=account||null;
 
   if(!state.session){
-    state.joins=[];state.singers=[];state.requests=[];state.sources=[];
+    state.joins=[];state.singers=[];state.requests=[];state.historyRequests=[];state.sources=[];
     return;
   }
-  const [joins,singers,requests]=await Promise.all([
+  const [joins,singers,requests,historyRequests]=await Promise.all([
     db.from('link_karaoke_join_intents').select('*').eq('session_id',state.session.id).order('created_at',{ascending:false}),
     db.from('link_karaoke_singers').select('*').eq('site_id',state.site.id).order('last_seen_at',{ascending:false}),
-    db.from('link_karaoke_requests').select('*').eq('session_id',state.session.id).order('requested_at',{ascending:true})
+    db.from('link_karaoke_requests').select('*').eq('session_id',state.session.id).order('requested_at',{ascending:true}),
+    db.from('link_karaoke_requests').select('*').eq('site_id',state.site.id).order('requested_at',{ascending:true}).limit(5000)
   ]);
   if(joins.error) throw joins.error;
   if(singers.error) throw singers.error;
   if(requests.error) throw requests.error;
+  if(historyRequests.error) throw historyRequests.error;
   state.joins=joins.data||[];
   state.singers=singers.data||[];
   state.requests=requests.data||[];
+  state.historyRequests=historyRequests.data||[];
+  if(!state.selectedDate){
+    const sessionDay=dateKey(state.session.opened_at);
+    const days=new Set(state.historyRequests.map(r=>dateKey(r.requested_at)).filter(Boolean));
+    state.selectedDate=days.has(sessionDay)?sessionDay:[...days].sort().pop()||sessionDay||dateKey(nowIso());
+  }
 }
 
 function adminHeader(){
@@ -318,9 +343,10 @@ function renderAdmin(){
         <button id="karaoke-sync" class="spotify-refresh" aria-label="Actualizar" title="Actualizar">↻</button>
       </div>
     </header>
+    ${calendarMarkup()}
     <section class="spotify-toolbar">
       <span>Lista de canciones</span>
-      <small>Se actualiza automáticamente</small>
+      <small>${safe(formatCalendarTitle(state.selectedDate))} · se actualiza automáticamente</small>
     </section>
     <section class="spotify-song-list">${selectionList()}</section>
   </main>`;
@@ -328,12 +354,41 @@ function renderAdmin(){
   bindAdminSection();
 }
 
+function requestDays(){
+  const counts=new Map();
+  for(const r of state.historyRequests||[]){
+    const key=dateKey(r.requested_at);
+    if(key)counts.set(key,(counts.get(key)||0)+1);
+  }
+  return [...counts.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([key,count])=>({key,count}));
+}
+function calendarMarkup(){
+  const days=requestDays();
+  const chips=days.map(({key,count})=>{
+    const d=formatCalendarChip(key);
+    return `<button class="spotify-day ${state.selectedDate===key?'active':''}" data-karaoke-day="${safe(key)}">
+      <small>${safe(d.weekday)}</small><strong>${safe(d.day)}</strong><span>${safe(d.month)}</span><i>${count}</i>
+    </button>`;
+  }).join('');
+  return `<section class="spotify-calendar">
+    <div class="spotify-calendar-title">
+      <span>REGISTRO POR FECHA</span>
+      <strong>${safe(formatCalendarTitle(state.selectedDate))}</strong>
+    </div>
+    <div class="spotify-calendar-days">${chips||'<span class="spotify-no-days">Sin historial todavía</span>'}</div>
+    <label class="spotify-date-picker">
+      <span>Calendario</span>
+      <input id="karaoke-date-input" type="date" value="${safe(state.selectedDate||'')}" aria-label="Elegir fecha">
+    </label>
+  </section>`;
+}
 function selectionRequests(){
-  return state.requests.filter(r=>['pending','queued'].includes(r.status)).sort((a,b)=>new Date(a.requested_at)-new Date(b.requested_at));
+  const source=(state.historyRequests?.length?state.historyRequests:state.requests)||[];
+  return source.filter(r=>dateKey(r.requested_at)===state.selectedDate).sort((a,b)=>new Date(a.requested_at)-new Date(b.requested_at));
 }
 function selectionList(){
   const rows=selectionRequests();
-  if(!rows.length)return '<div class="spotify-empty-list"><div class="spotify-empty-icon">♪</div><h2>Esperando canciones</h2><p>Cuando llegue un pedido recuperado aparecerá aquí automáticamente.</p></div>';
+  if(!rows.length)return '<div class="spotify-empty-list"><div class="spotify-empty-icon">♪</div><h2>Sin solicitudes este día</h2><p>Elige otra fecha del historial o espera el próximo pedido de Instagram.</p></div>';
   return rows.map((r,i)=>selectionRow(r,i)).join('');
 }
 function selectionRow(r,i){
@@ -342,6 +397,10 @@ function selectionRow(r,i){
   const avatar=s?.profile_picture
     ? `<img src="${safe(s.profile_picture)}" alt="">`
     : safe((handle||s?.participant_name||'?')[0].toUpperCase());
+  const actionable=r.session_id===state.session?.id&&['pending','queued'].includes(r.status);
+  const action=actionable
+    ? `<button class="spotify-select ${r.status==='queued'?'selected':''}" data-queue-request="${r.id}" aria-label="${r.status==='queued'?'Seleccionada':'Seleccionar'}">${r.status==='queued'?'✓':'+'}</button>`
+    : `<span class="spotify-history-time" title="${safe(r.status)}">${safe(fmtTime(r.requested_at))}</span>`;
   return `<article class="spotify-song-row">
     <span class="spotify-index">${i+1}</span>
     <div class="spotify-avatar">${avatar}</div>
@@ -350,7 +409,7 @@ function selectionRow(r,i){
       <span>${safe(r.song_artist||'Artista por identificar')}</span>
     </div>
     <a class="spotify-singer" href="https://instagram.com/${encodeURIComponent(handle)}" target="_blank" rel="noopener">@${safe(handle)}</a>
-    <button class="spotify-select ${r.status==='queued'?'selected':''}" data-queue-request="${r.id}" aria-label="${r.status==='queued'?'Seleccionada':'Seleccionar'}">${r.status==='queued'?'✓':'+'}</button>
+    ${action}
   </article>`;
 }
 
@@ -474,7 +533,9 @@ function bindAdminCommon(){
   $('#karaoke-sync')?.addEventListener('click',()=>syncAndIngest(true));
   if('Notification' in window&&Notification.permission==='default') Notification.requestPermission().catch(()=>null);
   $$('[data-karaoke-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.karaokeTab;renderAdmin();});
-  $$('[data-go-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.goTab;renderAdmin();});
+  $('[data-go-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.goTab;renderAdmin();});
+  $('[data-karaoke-day]').forEach(b=>b.onclick=()=>{state.selectedDate=b.dataset.karaokeDay;renderAdmin();});
+  $('#karaoke-date-input')?.addEventListener('change',e=>{if(e.target.value){state.selectedDate=e.target.value;renderAdmin();}});
 }
 
 function bindAdminSection(){
