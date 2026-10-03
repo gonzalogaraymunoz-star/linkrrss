@@ -591,21 +591,22 @@ async function refreshAdminData(){
   renderAdmin();
 }
 
-function scheduleAdminSync(delay=20000){
+function scheduleAdminSync(delay=null){
   clearTimeout(state.timer);
   if(!state.session)return;
+  const seconds=Math.max(10,Math.min(25,Number(state.site?.settings?.sync_seconds||15)));
+  const wait=delay===null?seconds*1000:delay;
   state.timer=setTimeout(async()=>{
     try{
-      await loadAdminSite();
-      renderAdmin();
+      await syncAndIngest(false);
     }catch(e){console.warn(e);}
-    scheduleAdminSync(20000);
-  },delay);
+    scheduleAdminSync();
+  },wait);
 }
 
 async function syncAndIngest(manual=false){
   if(state.syncing||!state.session||!state.site||!state.account)return;
-  state.syncing=true;renderAdmin();
+  state.syncing=true;if(manual)renderAdmin();
   try{
     // 1. LINKRRSS trae los mensajes nuevos de Instagram Caracol.
     await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'karaoke_refresh':'karaoke_live'});
@@ -623,7 +624,8 @@ async function syncAndIngest(manual=false){
     console.error('karaoke flow',e);
     if(manual)toast('No se pudo recuperar: '+(e.message||String(e)),true);
   }finally{
-    state.syncing=false;renderAdmin();
+    state.syncing=false;
+    if(manual)renderAdmin();
   }
 }
 
