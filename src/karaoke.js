@@ -533,8 +533,8 @@ function bindAdminCommon(){
   $('#karaoke-sync')?.addEventListener('click',()=>syncAndIngest(true));
   if('Notification' in window&&Notification.permission==='default') Notification.requestPermission().catch(()=>null);
   $$('[data-karaoke-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.karaokeTab;renderAdmin();});
-  $('[data-go-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.goTab;renderAdmin();});
-  $('[data-karaoke-day]').forEach(b=>b.onclick=()=>{state.selectedDate=b.dataset.karaokeDay;renderAdmin();});
+  $$('[data-go-tab]').forEach(b=>b.onclick=()=>{state.tab=b.dataset.goTab;renderAdmin();});
+  $$('[data-karaoke-day]').forEach(b=>b.onclick=()=>{state.selectedDate=b.dataset.karaokeDay;renderAdmin();});
   $('#karaoke-date-input')?.addEventListener('change',e=>{if(e.target.value){state.selectedDate=e.target.value;renderAdmin();}});
 }
 
