@@ -130,3 +130,36 @@
 .karaoke-shell.admin .section-title h1{color:#fff!important}
 .karaoke-shell.admin .big-empty{background:#181818!important;border:0!important;color:#b3b3b3!important;min-height:180px!important}
 .karaoke-shell.admin .big-empty h2{color:#fff!important}
+
+/* LINK Karaoke — single Spotify selection surface */
+.spotify-dj{background:#121212!important;color:#fff!important;min-height:100vh;padding:0!important;max-width:none!important}
+.spotify-top{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 22px) 24px 18px;background:linear-gradient(180deg,#282828 0,#121212 100%);border:0!important}
+.spotify-top small{display:block;color:#b3b3b3;font-size:10px;font-weight:700;letter-spacing:.14em;margin-bottom:5px}
+.spotify-top h1{margin:0;color:#fff;font-size:28px;line-height:1;font-weight:800;letter-spacing:-.04em}
+.spotify-top button{width:42px;height:42px;border:0;border-radius:50%;background:#1ed760;color:#000;font-size:20px;font-weight:800}
+.spotify-list-head{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(100px,.42fr) 38px;gap:10px;align-items:center;padding:12px 24px 8px;color:#b3b3b3;font-size:10px;border-bottom:1px solid #2a2a2a}
+.spotify-song-list{padding:4px 14px calc(30px + env(safe-area-inset-bottom))}
+.spotify-song-row{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(100px,.42fr) 38px;gap:10px;align-items:center;min-height:62px;padding:7px 10px;border-radius:7px}
+.spotify-song-row:hover{background:#242424}
+.spotify-index{color:#b3b3b3;text-align:center;font-size:13px;font-variant-numeric:tabular-nums}
+.spotify-track{min-width:0;display:flex;flex-direction:column;gap:4px}
+.spotify-track strong{color:#fff;font-size:15px;line-height:1.15;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotify-track span{color:#b3b3b3;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotify-singer{color:#b3b3b3!important;text-decoration:none;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotify-singer:hover{color:#fff!important;text-decoration:underline}
+.spotify-select{width:32px;height:32px;border-radius:50%;border:1px solid #727272;background:transparent;color:#fff;font-size:20px;line-height:1}
+.spotify-select.selected{background:#1ed760;color:#000;border-color:#1ed760;font-size:14px;font-weight:800}
+.spotify-empty-list{padding:80px 24px;text-align:center;color:#b3b3b3}
+.spotify-empty-list h2{color:#fff;margin:0 0 8px;font-size:20px}
+.spotify-empty-list p{margin:0;font-size:13px}
+@media(max-width:640px){
+ .spotify-top{padding-left:16px;padding-right:16px;padding-bottom:16px}
+ .spotify-top h1{font-size:25px}
+ .spotify-list-head{grid-template-columns:22px minmax(0,1fr) 38px;padding:10px 14px 7px}
+ .spotify-list-head span:nth-child(3){display:none}
+ .spotify-song-list{padding-left:6px;padding-right:6px}
+ .spotify-song-row{grid-template-columns:22px minmax(0,1fr) 38px;gap:8px;min-height:60px;padding:6px 8px}
+ .spotify-singer{grid-column:2;grid-row:2;margin-top:-13px;font-size:10px}
+ .spotify-track span{font-size:11px;padding-right:4px}
+ .spotify-select{grid-column:3;grid-row:1 / span 2}
+}
