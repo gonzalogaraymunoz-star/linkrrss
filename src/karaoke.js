@@ -326,7 +326,7 @@ function adminSection(){
 
 function singerFor(id){return state.singers.find(s=>s.id===id)||null;}
 function requestSinger(r){return singerFor(r.singer_id);}
-function pendingRequests(){return state.requests.filter(r=>r.status==='pending');}
+function pendingRequests(){return state.requests.filter(r=>r.status==='pending').sort((a,b)=>new Date(a.requested_at)-new Date(b.requested_at));}
 function queuedRequests(){return state.requests.filter(r=>r.status==='queued').sort((a,b)=>(a.queue_position||9999)-(b.queue_position||9999)||new Date(a.requested_at)-new Date(b.requested_at));}
 function currentRequest(){return state.requests.find(r=>r.status==='on_stage')||null;}
 function completedRequests(){return state.requests.filter(r=>r.status==='completed');}
@@ -365,20 +365,18 @@ function queueItem(r,i){
 
 function requestsSection(){
   const pending=pendingRequests();
-  const joinsWaiting=state.joins.filter(j=>j.status==='pending'||j.status==='matched');
   return `<section class="requests-panel">
-    <div class="section-title"><div><span>INSTAGRAM → KARAOKE</span><h1>Solicitudes</h1><p>Lee los DMs de Caracol en LINKRRSS y carga aquí las canciones en orden de llegada.</p></div><button id="karaoke-sync-requests">↻ Buscar mensajes</button></div>
-    ${pending.length?'<div class="request-cards">'+pending.map(requestCard).join('')+'</div>':'<div class="big-empty"><div>✓</div><h2>No hay solicitudes pendientes.</h2><p>Pulsa Buscar mensajes para cargar los nuevos pedidos de Instagram.</p></div>'}
-    ${joinsWaiting.length?'<div class="waiting-joins"><span>ESPERANDO DM</span>'+joinsWaiting.map(j=>`<article><b>@${safe(j.instagram_username)}</b><small>${j.conversation_id?'Conversación detectada · esperando canción':'Entró por QR · todavía sin conversación'}</small></article>`).join('')+'</div>':''}
+    <div class="section-title"><div><span>KARAOKE · ORDEN DE SOLICITUD</span><h1>Canciones</h1><p>Canción · artista · cantante de Instagram.</p></div></div>
+    ${pending.length?'<div class="request-cards">'+pending.map(requestCard).join('')+'</div>':'<div class="big-empty"><div>✓</div><h2>No hay canciones pendientes.</h2></div>'}
   </section>`;
 }
 
 function requestCard(r){
   const s=requestSinger(r);
   return `<article class="request-card">
-    <div class="request-person"><div class="mini-avatar">${safe((s?.artistic_name||s?.instagram_username||'?')[0].toUpperCase())}</div><div><b>${safe(s?.artistic_name||s?.participant_name||'Cantante')}</b><a href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">@${safe(s?.instagram_username||'')}</a></div><small>${safe(fmtTime(r.requested_at))}</small></div>
-    <div class="request-song"><h2>${safe(r.song_title)}</h2>${r.song_artist?`<p>${safe(r.song_artist)}</p>`:''}</div>
-    <div class="request-actions"><button class="karaoke-primary compact" data-queue-request="${r.id}">+ Cola</button><button data-edit-request="${r.id}">Editar</button><button data-cancel-request="${r.id}">×</button></div>
+    <div class="request-song"><h2>${safe(r.song_title)}</h2><p>${safe(r.song_artist||'')}</p></div>
+    <div class="request-person"><div class="mini-avatar">${safe((s?.instagram_username||'?')[0].toUpperCase())}</div><div><b>@${safe(s?.instagram_username||'')}</b><a href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">Ver perfil ↗</a></div><small>${safe(fmtTime(r.requested_at))}</small></div>
+    <div class="request-actions"><button class="karaoke-primary compact" data-queue-request="${r.id}">+ Cola</button></div>
   </article>`;
 }
 
