@@ -580,36 +580,21 @@ async function syncAndIngest(manual=false){
 
 async function ingestCurrentSession(){
   if(!state.session||!state.account)return {created:0,matched:0};
-  const {data:joins,error:joinError}=await db.from('link_karaoke_join_intents').select('*').eq('session_id',state.session.id).order('created_at',{ascending:true});
-  if(joinError)throw joinError;
-  if(!joins?.length)return {created:0,matched:0};
 
-  const {data:conversations,error:convError}=await db.from('link_rrss_conversations').select('*').eq('account_id',state.account.id).order('last_message_at',{ascending:false}).limit(1000);
+  const {data:conversations,error:convError}=await db.from('link_rrss_conversations')
+    .select('*').eq('account_id',state.account.id)
+    .gte('last_message_at',state.session.opened_at)
+    .order('last_message_at',{ascending:false}).limit(1000);
   if(convError)throw convError;
-  const convMap=new Map();
-  for(const c of conversations||[]){
-    const h=normalizeHandle(c.participant_username);
-    if(h&&!convMap.has(h))convMap.set(h,c);
-  }
-  const matchedPairs=[];
-  let matched=0;
-  for(const join of joins){
-    const conv=convMap.get(normalizeHandle(join.instagram_username));
-    if(!conv)continue;
-    matchedPairs.push({join,conv});
-    if(join.conversation_id!==conv.id||join.status==='pending'){
-      const {error}=await db.from('link_karaoke_join_intents').update({
-        conversation_id:conv.id,status:join.status==='converted'?'converted':'matched',
-        matched_at:join.matched_at||nowIso()
-      }).eq('id',join.id);
-      if(!error)matched++;
-    }
-  }
-  if(!matchedPairs.length)return {created:0,matched};
+  if(!conversations?.length)return {created:0,matched:0};
 
-  const convIds=matchedPairs.map(x=>x.conv.id);
-  const {data:messages,error:msgError}=await db.from('link_rrss_messages').select('*').in('conversation_id',convIds).order('platform_created_at',{ascending:true});
+  const convIds=conversations.map(x=>x.id);
+  const {data:messages,error:msgError}=await db.from('link_rrss_messages')
+    .select('*').in('conversation_id',convIds)
+    .gte('platform_created_at',state.session.opened_at)
+    .order('platform_created_at',{ascending:true});
   if(msgError)throw msgError;
+
   const msgIds=(messages||[]).map(m=>m.id);
   let used=new Set();
   if(msgIds.length){
@@ -618,34 +603,62 @@ async function ingestCurrentSession(){
   }
 
   let created=0;
-  for(const pair of matchedPairs){
-    const join=pair.join,conv=pair.conv;
-    const singer=await ensureSinger(join,conv);
-    if(!join.welcome_sent_at&&state.site.settings?.auto_welcome!==false){
-      const welcome=state.site.settings?.welcome_message||'¡Bienvenido al karaoke! 🎤 Mándanos por aquí la canción que quieres cantar.';
-      try{
-        await sendDm(conv.external_conversation_id,welcome,'link-karaoke-welcome-'+join.id);
-        await db.from('link_karaoke_join_intents').update({welcome_sent_at:nowIso(),last_prompt_at:nowIso()}).eq('id',join.id);
-      }catch(e){console.warn('welcome',e);}
-    }
-
-    const threshold=new Date(new Date(join.created_at).getTime()-120000);
-    const incoming=(messages||[]).filter(m=>m.conversation_id===conv.id&&m.direction==='incoming'&&!used.has(m.id))
-      .filter(m=>new Date(m.platform_created_at||m.created_at)>=threshold)
-      .filter(m=>isLikelySong(m.message));
+  for(const conv of conversations){
+    const handle=normalizeHandle(conv.participant_username);
+    if(!handle)continue;
+    const singer=await ensureSingerFromConversation(conv);
+    const incoming=(messages||[]).filter(m=>
+      m.conversation_id===conv.id&&m.direction==='incoming'&&!used.has(m.id)&&isLikelySong(m.message)
+    );
     for(const message of incoming){
       const parsed=parseSong(message.message);
       if(!parsed.title)continue;
-      const request=await createSongRequest(singer,join,conv,message,parsed);
+      const request=await createSongRequestFromDm(singer,conv,message,parsed);
       if(!request)continue;
       used.add(message.id);created++;
       if(state.site.settings?.auto_confirm_request!==false){
-        const txt='🎤 Recibimos “'+parsed.title+'”. Ya quedó en solicitudes del karaoke.';
+        const txt='🎤 Recibimos “'+parsed.title+'”. Ya quedó en pedidos del karaoke.';
         sendDm(conv.external_conversation_id,txt,'link-karaoke-confirm-'+request.id).catch(()=>null);
       }
     }
   }
-  return {created,matched};
+  return {created,matched:conversations.length};
+}
+
+async function ensureSingerFromConversation(conv){
+  const handle=normalizeHandle(conv.participant_username);
+  const pseudoJoin={
+    id:null,instagram_username:handle,artistic_name:null,public_profile:true,
+    created_at:conv.last_message_at||nowIso(),status:'matched',conversation_id:conv.id
+  };
+  return ensureSinger(pseudoJoin,conv);
+}
+
+async function createSongRequestFromDm(singer,conv,message,parsed){
+  const {data,error}=await db.from('link_karaoke_requests').insert({
+    site_id:state.site.id,session_id:state.session.id,singer_id:singer.id,
+    song_title:parsed.title,song_artist:parsed.artist,status:'pending',
+    requested_at:message.platform_created_at||message.created_at||nowIso()
+  }).select().single();
+  if(error){console.warn(error);return null;}
+  const {error:sourceError}=await db.from('link_karaoke_request_sources').insert({
+    request_id:data.id,conversation_id:conv.id,source_message_id:message.id,
+    external_conversation_id:conv.external_conversation_id,
+    external_message_id:message.external_message_id,raw_message:message.message,
+    source_kind:'instagram_dm'
+  });
+  if(sourceError){
+    await db.from('link_karaoke_requests').delete().eq('id',data.id);
+    if(sourceError.code==='23505')return null;
+    throw sourceError;
+  }
+  const {error:requestInteractionError}=await db.from('link_interactions').insert({
+    person_id:singer.person_id,business_id:state.site.business_id,action_type:'karaoke_song_request',
+    channel:'instagram',source:'link_karaoke',confidence:'observed',
+    metadata:{site_id:state.site.id,session_id:state.session.id,request_id:data.id,source_message_id:message.id}
+  });
+  if(requestInteractionError)console.warn('interaction',requestInteractionError);
+  return data;
 }
 
 async function sendDm(externalConversationId,message,idempotencyKey){
@@ -724,7 +737,7 @@ async function ensureSinger(join,conv){
     const {error:joinInteractionError}=await db.from('link_interactions').insert({
       person_id:person.id,business_id:state.site.business_id,action_type:'karaoke_join',
       channel:'instagram',source:'link_karaoke',confidence:'observed',
-      metadata:{site_id:state.site.id,session_id:state.session.id,join_intent_id:join.id,instagram_username:handle}
+      metadata:{site_id:state.site.id,session_id:state.session.id,join_intent_id:join.id||null,instagram_username:handle}
     });
     if(joinInteractionError)console.warn('interaction',joinInteractionError);
   }
