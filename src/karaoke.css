@@ -163,3 +163,27 @@
  .spotify-track span{font-size:11px;padding-right:4px}
  .spotify-select{grid-column:3;grid-row:1 / span 2}
 }
+/* Emergency mobile layout fix: explicit flex rows to avoid Safari grid collapse */
+html,body,#app{width:100%;min-width:0}
+body{overflow-x:hidden}
+.spotify-dj{width:100%!important;overflow-x:hidden!important;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+.spotify-top{width:100%!important;box-sizing:border-box!important}
+.spotify-list-head{display:none!important}
+.spotify-song-list{display:block!important;width:100%!important;padding:8px 8px calc(32px + env(safe-area-inset-bottom))!important}
+.spotify-song-row{display:flex!important;width:100%!important;min-width:0!important;min-height:68px!important;align-items:center!important;gap:10px!important;padding:8px 8px!important;margin:0!important;border-radius:8px!important}
+.spotify-index{flex:0 0 22px!important;width:22px!important;font-size:13px!important}
+.spotify-track{flex:1 1 auto!important;width:auto!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:3px!important}
+.spotify-track strong{display:block!important;width:100%!important;font-size:16px!important;line-height:1.2!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.spotify-track span{display:block!important;width:100%!important;font-size:12px!important;line-height:1.25!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.spotify-singer{flex:0 1 120px!important;max-width:120px!important;min-width:0!important;display:block!important;font-size:11px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.spotify-select{flex:0 0 34px!important;width:34px!important;height:34px!important;padding:0!important;display:grid!important;place-items:center!important}
+@media(max-width:640px){
+ .spotify-top{align-items:center!important;padding:18px 14px 14px!important}
+ .spotify-top small{font-size:9px!important}
+ .spotify-top h1{font-size:26px!important;line-height:1.05!important}
+ .spotify-top button{flex:0 0 38px!important;width:38px!important;height:38px!important}
+ .spotify-song-row{min-height:72px!important;gap:8px!important;padding:8px 6px!important}
+ .spotify-index{flex-basis:20px!important;width:20px!important}
+ .spotify-singer{flex:0 0 92px!important;max-width:92px!important;font-size:10px!important}
+ .spotify-select{flex-basis:32px!important;width:32px!important;height:32px!important}
+}
