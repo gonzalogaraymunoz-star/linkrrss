@@ -555,12 +555,15 @@ async function refreshAdminData(){
   renderAdmin();
 }
 
-function scheduleAdminSync(delay=10000){
+function scheduleAdminSync(delay=20000){
   clearTimeout(state.timer);
   if(!state.session)return;
   state.timer=setTimeout(async()=>{
-    try{await syncAndIngest(false);}catch(e){console.warn(e);}
-    scheduleAdminSync(10000);
+    try{
+      await loadAdminSite();
+      renderAdmin();
+    }catch(e){console.warn(e);}
+    scheduleAdminSync(20000);
   },delay);
 }
 
