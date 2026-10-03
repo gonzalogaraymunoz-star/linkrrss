@@ -553,11 +553,11 @@ async function refreshAdminData(){
   renderAdmin();
 }
 
-function scheduleAdminSync(delay=5000){
+function scheduleAdminSync(delay=3000){
   clearTimeout(state.timer);
   if(!state.session)return;
   state.timer=setTimeout(async()=>{
-    await syncAndIngest(false).catch(e=>console.warn(e));
+    try{await syncAndIngest(false);}catch(e){console.warn(e);}
     scheduleAdminSync(3000);
   },delay);
 }
@@ -566,19 +566,23 @@ async function syncAndIngest(manual=false){
   if(state.syncing||!state.session||!state.site||!state.account)return;
   state.syncing=true;renderAdmin();
   try{
-    await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'linkdot_karaoke_manual':'linkdot_karaoke'});
-    await sleep(700);
-    const {data,error}=await db.functions.invoke('linkdot-karaoke',{body:{site_slug:state.site.slug}});
+    // 1. LINKRRSS trae los mensajes nuevos de Instagram Caracol.
+    await invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:manual?'karaoke_refresh':'karaoke_live'});
+    await sleep(900);
+    // 2. Una sola función persistente codifica DMs nuevos como pedidos de Karaoke.
+    const {data:created,error}=await db.rpc('link_karaoke_ingest_caracol');
     if(error)throw error;
+    // 3. El panel DJ relee Supabase. Nada se transporta en memoria del navegador.
     await loadAdminSite();
     renderAdmin();
-    const n=Number(data?.created||0);
-    if(n>0)toast('LINKDOT Karaoke recuperó '+n+' canción(es).');
-    else if(manual)toast('LINKDOT Karaoke revisó LINKRRSS. Sin canciones nuevas.');
+    const n=Number(created||0);
+    if(n>0)toast(n+' pedido(s) nuevo(s) de Instagram.');
+    else if(manual)toast('Revisado. No hay pedidos nuevos.');
   }catch(e){
-    console.error(e);toast('LINKDOT Karaoke: '+(e.message||String(e)),true);
+    console.error('karaoke flow',e);
+    if(manual)toast('No se pudo recuperar: '+(e.message||String(e)),true);
   }finally{
-    state.syncing=false;renderAdmin();scheduleAdminSync(3000);
+    state.syncing=false;renderAdmin();
   }
 }
 
