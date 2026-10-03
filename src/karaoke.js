@@ -223,7 +223,7 @@ async function bootAdmin(){
   if(state.account&&!state.session){
     setTimeout(()=>invokeZernio({action:'sync.business',business_id:state.site.business_id,trigger:'karaoke_app_open'}).catch(e=>console.warn('karaoke open sync',e)),80);
   }
-  scheduleAdminSync(600);
+  scheduleAdminSync(1000);
 }
 
 function renderAdminLogin(){
@@ -555,12 +555,12 @@ async function refreshAdminData(){
   renderAdmin();
 }
 
-function scheduleAdminSync(delay=3000){
+function scheduleAdminSync(delay=10000){
   clearTimeout(state.timer);
   if(!state.session)return;
   state.timer=setTimeout(async()=>{
     try{await syncAndIngest(false);}catch(e){console.warn(e);}
-    scheduleAdminSync(3000);
+    scheduleAdminSync(10000);
   },delay);
 }
 
