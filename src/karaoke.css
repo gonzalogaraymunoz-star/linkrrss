@@ -113,3 +113,20 @@
 .karaoke-admin .request-person .mini-avatar{width:26px!important;height:26px!important}
 .karaoke-admin .request-actions{padding-left:0!important}
 }
+/* Spotify shell override */
+.karaoke-shell.admin{min-height:100vh;background:#121212!important;color:#fff!important}
+.karaoke-shell.admin .karaoke-admin-head{background:#121212!important;border-color:#2a2a2a!important;color:#fff!important}
+.karaoke-shell.admin .karaoke-wordmark,.karaoke-shell.admin .karaoke-wordmark b{color:#fff!important}
+.karaoke-shell.admin .admin-site-select small{color:#b3b3b3!important}
+.karaoke-shell.admin .admin-site-select select{color:#fff!important;background:#181818!important;border-color:#333!important}
+.karaoke-shell.admin .admin-head-actions{color:#b3b3b3!important}
+.karaoke-shell.admin .admin-head-actions button,.karaoke-shell.admin .admin-head-actions a{background:#181818!important;color:#fff!important;border-color:#333!important}
+.karaoke-shell.admin .karaoke-tabs{background:#121212!important;border-color:#2a2a2a!important}
+.karaoke-shell.admin .karaoke-tabs button{color:#b3b3b3!important;background:transparent!important}
+.karaoke-shell.admin .karaoke-tabs button.active{color:#fff!important;border-color:#1ed760!important}
+.karaoke-shell.admin .karaoke-tabs button span{background:#1ed760!important;color:#000!important}
+.karaoke-shell.admin .karaoke-admin-body{background:#121212!important;color:#fff!important;min-height:calc(100vh - 150px)}
+.karaoke-shell.admin .requests-panel{background:#121212!important}
+.karaoke-shell.admin .section-title h1{color:#fff!important}
+.karaoke-shell.admin .big-empty{background:#181818!important;border:0!important;color:#b3b3b3!important;min-height:180px!important}
+.karaoke-shell.admin .big-empty h2{color:#fff!important}
