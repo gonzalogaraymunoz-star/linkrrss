@@ -295,13 +295,33 @@ function adminHeader(){
 function renderAdmin(){
   const root=$('#app');
   if(!state.session){
-    root.innerHTML=`<main class="karaoke-shell admin spotify-dj"><section class="spotify-empty"><div class="karaoke-wordmark">LINK <b>Karaoke</b></div><h1>Karaoke cerrado</h1><button class="karaoke-primary" id="open-karaoke-night">Abrir karaoke</button></section></main>`;
+    root.innerHTML=`<main class="karaoke-shell admin spotify-dj">
+      <section class="spotify-closed">
+        <div class="spotify-brand">LINK KARAOKE</div>
+        <h1>Karaoke Caracol</h1>
+        <p>La lista aparecerá aquí cuando abras la sesión.</p>
+        <button class="spotify-open" id="open-karaoke-night">Abrir karaoke</button>
+      </section>
+    </main>`;
     $('#open-karaoke-night').onclick=openNight;
     return;
   }
+  const total=selectionRequests().length;
   root.innerHTML=`<main class="karaoke-shell admin spotify-dj">
-    <header class="spotify-top"><div><small>LINK KARAOKE</small><h1>${safe(state.site.name)}</h1></div><button id="karaoke-sync" aria-label="Actualizar">↻</button></header>
-    <section class="spotify-list-head"><span>#</span><span>Canción</span><span>Cantante</span><span></span></section>
+    <header class="spotify-hero">
+      <div class="spotify-brand">LINK KARAOKE</div>
+      <div class="spotify-hero-row">
+        <div>
+          <h1>Karaoke Caracol</h1>
+          <p><strong>${total}</strong> canciones · orden de llegada</p>
+        </div>
+        <button id="karaoke-sync" class="spotify-refresh" aria-label="Actualizar" title="Actualizar">↻</button>
+      </div>
+    </header>
+    <section class="spotify-toolbar">
+      <span>Lista de canciones</span>
+      <small>Se actualiza automáticamente</small>
+    </section>
     <section class="spotify-song-list">${selectionList()}</section>
   </main>`;
   bindAdminCommon();
@@ -313,16 +333,24 @@ function selectionRequests(){
 }
 function selectionList(){
   const rows=selectionRequests();
-  if(!rows.length)return '<div class="spotify-empty-list"><h2>Esperando canciones…</h2><p>Los pedidos recuperados aparecen aquí automáticamente.</p></div>';
+  if(!rows.length)return '<div class="spotify-empty-list"><div class="spotify-empty-icon">♪</div><h2>Esperando canciones</h2><p>Cuando llegue un pedido recuperado aparecerá aquí automáticamente.</p></div>';
   return rows.map((r,i)=>selectionRow(r,i)).join('');
 }
 function selectionRow(r,i){
   const s=requestSinger(r);
+  const handle=s?.instagram_username||'';
+  const avatar=s?.profile_picture
+    ? `<img src="${safe(s.profile_picture)}" alt="">`
+    : safe((handle||s?.participant_name||'?')[0].toUpperCase());
   return `<article class="spotify-song-row">
     <span class="spotify-index">${i+1}</span>
-    <div class="spotify-track"><strong>${safe(r.song_title)}</strong><span>${safe(r.song_artist||'Artista por identificar')}</span></div>
-    <a class="spotify-singer" href="https://instagram.com/${encodeURIComponent(s?.instagram_username||'')}" target="_blank" rel="noopener">@${safe(s?.instagram_username||'')}</a>
-    <button class="spotify-select ${r.status==='queued'?'selected':''}" data-queue-request="${r.id}">${r.status==='queued'?'✓':'+'}</button>
+    <div class="spotify-avatar">${avatar}</div>
+    <div class="spotify-track">
+      <strong>${safe(r.song_title)}</strong>
+      <span>${safe(r.song_artist||'Artista por identificar')}</span>
+    </div>
+    <a class="spotify-singer" href="https://instagram.com/${encodeURIComponent(handle)}" target="_blank" rel="noopener">@${safe(handle)}</a>
+    <button class="spotify-select ${r.status==='queued'?'selected':''}" data-queue-request="${r.id}" aria-label="${r.status==='queued'?'Seleccionada':'Seleccionar'}">${r.status==='queued'?'✓':'+'}</button>
   </article>`;
 }
 
