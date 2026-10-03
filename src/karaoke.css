@@ -55,3 +55,33 @@
  .request-actions{padding-left:35px;align-self:auto}
  .request-actions .karaoke-primary{flex:1}
 }
+
+/* Karaoke DJ — estética inspirada en reproductores musicales oscuros */
+.karaoke-shell,.karaoke-admin{background:#121212;color:#fff;min-height:100vh}
+.karaoke-admin .karaoke-header,.karaoke-admin .admin-nav{background:#121212;border-color:#282828}
+.karaoke-admin .requests-panel{max-width:760px;margin:0 auto}
+.karaoke-admin .section-title{padding:18px 4px 14px;border:0}
+.karaoke-admin .section-title span{color:#b3b3b3;letter-spacing:.08em}
+.karaoke-admin .section-title h1{font-size:30px;letter-spacing:-.04em;color:#fff}
+.karaoke-admin .section-title p{color:#b3b3b3}
+.karaoke-admin .request-cards{gap:2px}
+.karaoke-admin .request-card{background:#181818;border:0;border-radius:8px;padding:10px 12px;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"song actions" "person actions";transition:background .15s ease}
+.karaoke-admin .request-card:hover{background:#282828}
+.karaoke-admin .request-song{grid-area:song;padding:0}
+.karaoke-admin .request-song h2{font-size:16px;font-weight:700;color:#fff;line-height:1.25}
+.karaoke-admin .request-song p{font-size:13px;color:#b3b3b3;margin-top:3px}
+.karaoke-admin .request-person{grid-area:person;display:flex;align-items:center;gap:7px;margin-top:5px}
+.karaoke-admin .request-person .mini-avatar{width:22px;height:22px;border-radius:50%;background:#333;color:#fff}
+.karaoke-admin .request-person b{font-size:11px;color:#fff}
+.karaoke-admin .request-person a{font-size:10px;color:#b3b3b3}
+.karaoke-admin .request-person>small{font-size:10px;color:#727272;margin-left:auto}
+.karaoke-admin .request-actions{grid-area:actions;align-self:center;padding:0}
+.karaoke-admin .request-actions .karaoke-primary{width:42px;height:42px;min-height:42px;border-radius:50%;padding:0;background:#1ed760;color:#000;font-size:0;font-weight:800;border:0}
+.karaoke-admin .request-actions .karaoke-primary:after{content:"+";font-size:24px;line-height:1}
+.karaoke-admin .request-actions .karaoke-primary:hover{transform:scale(1.05);background:#1fdf64}
+@media(max-width:640px){
+ .karaoke-admin .requests-panel{padding:0 12px}
+ .karaoke-admin .section-title h1{font-size:26px}
+ .karaoke-admin .request-card{grid-template-columns:minmax(0,1fr) 44px;grid-template-areas:"song actions" "person actions";padding:11px 10px}
+ .karaoke-admin .request-song,.karaoke-admin .request-actions,.karaoke-admin .request-person{padding-left:0}
+}
