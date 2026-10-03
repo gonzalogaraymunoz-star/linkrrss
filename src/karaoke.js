@@ -558,7 +558,7 @@ function scheduleAdminSync(delay=5000){
   if(!state.session)return;
   state.timer=setTimeout(async()=>{
     await syncAndIngest(false).catch(e=>console.warn(e));
-    scheduleAdminSync(5000);
+    scheduleAdminSync(3000);
   },delay);
 }
 
@@ -578,7 +578,7 @@ async function syncAndIngest(manual=false){
   }catch(e){
     console.error(e);toast('LINKDOT Karaoke: '+(e.message||String(e)),true);
   }finally{
-    state.syncing=false;renderAdmin();scheduleAdminSync(5000);
+    state.syncing=false;renderAdmin();scheduleAdminSync(3000);
   }
 }
 
