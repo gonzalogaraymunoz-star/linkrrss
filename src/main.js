@@ -5,6 +5,7 @@ import './style.css';
 import { operationSection, bindOperation } from './operation.js';
 import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
 import { bootKaraokeRoute } from './karaoke.js';
+import { loadStudio, studioSection, bindStudio } from './studio.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -72,7 +73,8 @@ const state = {
   notifications: [],
   dotWorkspace: null,
   dotSubdots: [],
-  dotArtifacts: []
+  dotArtifacts: [],
+  studioProjects: []
 };
 
 const nav = [
@@ -80,6 +82,7 @@ const nav = [
   ['artifacts','Artefactos',Workflow],
   ['inbox','Conversaciones',MessageCircle],
   ['content','Contenido',FileText],
+  ['studio','Studio',Music2],
   ['operation','Operación',Activity],
   ['calendar','Calendario',CalendarDays],
   ['analytics','Analytics',ChartNoAxesCombined],
@@ -1607,7 +1610,7 @@ function artifactsSection(){
       </div>
     </header>
     <div class="workspace-stats">
-      <article><strong>5</strong><span>SubLinkDots</span></article>
+      <article><strong>${state.dotSubdots.length}</strong><span>SubLinkDots</span></article>
       <article><strong>${total}</strong><span>Artefactos visibles</span></article>
       <article><strong>${specific}</strong><span>Específicos de ${safe(state.business?.name||'negocio')}</span></article>
       <article><strong>${attention}</strong><span>Por completar</span></article>
@@ -1622,6 +1625,7 @@ function bodySection(){
   if(state.section==='connections') return connectionsSection();
   if(state.section==='inbox') return inboxSection();
   if(state.section==='content') return contentSection();
+  if(state.section==='studio') return studioSection({state});
   if(state.section==='operation') return operationSection({state});
   if(state.section==='calendar') return calendarSection();
   if(state.section==='analytics') return analyticsSection();
@@ -1740,6 +1744,7 @@ function bind(){
   $('#load-automations')?.addEventListener('click',loadAutomations);
   bindOperation({state,db,renderApp,toast,openAdminLoginModal});
   bindNotifications({state,db,renderApp,toast});
+  bindStudio({state,db,renderApp,toast});
 }
 
 
@@ -1761,6 +1766,10 @@ async function loadHistoryIfNeeded(){
 }
 
 async function loadCurrentSection(){
+  if(state.section==='studio'){
+    if(state.canManage&&state.business){try{await loadStudio({state,db});renderApp();}catch(e){toast(e.message||String(e),true);}}
+    return;
+  }
   if(state.section==='artifacts')return;
   if(!state.canManage||!state.business||!state.sources.length)return;
   const key=[state.business.id,state.activeAccount?.id||'source',state.section].join(':');
