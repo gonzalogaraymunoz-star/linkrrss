@@ -1,50 +1,7 @@
 import './studio.css';
-
 const esc=(v='')=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-export async function loadStudio({state,db}){
-  if(!state.canManage||!state.business)return;
-  const {data,error}=await db.from('link_rrss_studio_projects').select('*').eq('business_id',state.business.id).neq('status','archived').order('updated_at',{ascending:false});
-  if(error)throw error;
-  state.studioProjects=data||[];
-}
-
-export function studioSection({state}){
-  if(!state.canManage)return '<section class="empty-apparatus small"><span class="eyebrow">MAR</span><h1>Producción de LINKRRSS.</h1><p>Inicia sesión como miembro LINK para trabajar aquí.</p></section>';
-  const rows=state.studioProjects||[];
-  const cards=rows.length?rows.map(p=>{
-    const d=p.editor_state||{}; const result=d.copy||d.result||'MAR está preparando el resultado.';
-    return `<article class="studio-project"><div><span>${esc(p.channel||'LINKRRSS')}</span><i>${esc(p.status)}</i></div><h3>${esc(p.name)}</h3><p>${esc(p.brief||'Pedido a MAR')}</p>${p.status==='review'? `<blockquote>${esc(result)}</blockquote>`:''}<footer><small>${esc(p.updated_at?new Date(p.updated_at).toLocaleString('es-CL'):'')}</small><b>${p.status==='review'?'Listo para revisar':'En proceso'}</b></footer></article>`;
-  }).join(''):'<div class="studio-empty"><b>Aún no hay pedidos.</b><span>Escribe lo que necesitas como se lo pedirías a una persona.</span></div>';
-  return `<section class="link-studio">
-    <header class="studio-hero mar-simple"><div><span class="eyebrow">LINKDOT MAR · ${esc(state.business?.name||'LINKRRSS')}</span><h1>¿Qué hacemos?</h1><p>Dime el resultado que necesitas. MAR organiza el resto del ecosistema.</p></div></header>
-    <form class="mar-request" id="mar-request">
-      <textarea id="mar-instruction" rows="4" placeholder="Ej: Con estas fotos haz una publicación para este sábado. Que se vea natural y déjala lista para revisar." required></textarea>
-      <div class="mar-request-actions"><label class="mar-attach">＋ Adjuntar material<input id="mar-files" type="file" accept="image/*,video/*,audio/*" multiple hidden></label><span id="mar-file-count">Sin archivos adjuntos</span><button type="submit">Enviar a MAR</button></div>
-    </form>
-    <div class="mar-promise"><span>MAR entiende</span><i>→</i><span>coordina LINKRRSS</span><i>→</i><span>te muestra el resultado</span></div>
-    <section class="studio-projects"><header><div><span class="eyebrow">TRABAJOS RECIENTES</span><h2>${esc(state.business?.name||'Negocio')}</h2></div><b>${rows.length}</b></header><div class="studio-grid">${cards}</div></section>
-  </section>`;
-}
-
-export function bindStudio({state,db,renderApp,toast}){
-  const files=document.querySelector('#mar-files'), count=document.querySelector('#mar-file-count'), form=document.querySelector('#mar-request');
-  if(files)files.onchange=()=>{const n=files.files?.length||0;count.textContent=n?`${n} archivo${n===1?'':'s'} listo${n===1?'':'s'}`:'Sin archivos adjuntos';};
-  if(!form)return;
-  form.onsubmit=async(e)=>{
-    e.preventDefault(); const instruction=document.querySelector('#mar-instruction')?.value?.trim(); if(!instruction)return;
-    const submit=form.querySelector('button[type=submit]');submit.disabled=true;
-    const attached=[...(files?.files||[])].map(f=>({name:f.name,type:f.type,size:f.size,status:'pending_ingestion'}));
-    const {data,error}=await db.from('link_rrss_studio_projects').insert({
-      business_id:state.business.id,name:instruction.slice(0,72),intent:'adapt',status:'draft',aspect_ratio:'9:16',
-      brief:instruction,editor_state:{request:instruction,automation_mode:'instruction_only',attachments:attached,pipeline:['MAR entiende','recupera contexto','coordina SubDots','produce','presenta resultado','aprobación','publicación','métricas']},
-      brand_contract:{business_id:state.business.id},source_adapter:'mar'
-    }).select('id').single();
-    if(error){toast(error.message||String(error),true);submit.disabled=false;return;}
-    if(attached.length){
-      const rows=attached.map((a,i)=>({project_id:data.id,asset_type:a.type.startsWith('video/')?'video':a.type.startsWith('audio/')?'audio':'image',name:a.name,original_name:a.name,mime_type:a.type,size_bytes:a.size,ingestion_status:'pending',sort_order:(i+1)*10,metadata:{source:'browser_attachment',needs_ingestion:true}}));
-      const {error:ae}=await db.from('link_rrss_studio_assets').insert(rows); if(ae)toast('Pedido guardado; material pendiente de absorción.',true);
-    }
-    await loadStudio({state,db});toast('MAR recibió el pedido.');renderApp();
-  };
-}
+const statusLabel=s=>({draft:'MAR está trabajando',editing:'Produciendo',review:'En revisión',approved:'Aprobado',exported:'Publicado'}[s]||s);
+export async function loadStudio({state,db}){if(!state.canManage||!state.business)return;const {data,error}=await db.from('link_rrss_studio_projects').select('*').eq('business_id',state.business.id).neq('status','archived').order('updated_at',{ascending:false});if(error)throw error;state.studioProjects=data||[];}
+function resultPanel(p){if(!p)return '<div class="mar-result-empty"><span>RESULTADO</span><h2>Aquí aparecerá lo que haga MAR.</h2><p>No necesitas abrir ningún editor.</p></div>';const d=p.editor_state||{},copy=d.copy||d.result||'';return `<article class="mar-result-card"><header><b>Resultado</b><span class="status-dot">${esc(statusLabel(p.status))}</span></header><div class="mar-result-preview"><div class="preview-brand">${esc(p.brand_contract?.business||'CARACOL')}</div><div class="preview-message">Sábados<br><em>para cenar</em></div><small>PIEZA PREPARADA POR MAR</small></div>${copy?`<div class="mar-copy"><b>Pie de publicación</b><p>${esc(copy)}</p></div>`:''}<footer><button class="ghost">Descargar</button><button class="ghost">Pedir cambios</button><button class="approve">Aprobar y publicar</button></footer></article>`;}
+export function studioSection({state}){if(!state.canManage)return '<section class="empty-apparatus small"><span class="eyebrow">MAR</span><h1>Producción de LINKRRSS.</h1><p>Inicia sesión como miembro LINK para trabajar aquí.</p></section>';const rows=state.studioProjects||[],selected=rows[0];const recent=rows.slice(0,6).map(p=>`<button class="recent-card"><span>${esc(statusLabel(p.status))}</span><b>${esc(p.name)}</b><small>${esc(p.channel||'LINKRRSS')}</small></button>`).join('')||'<div class="studio-empty">Tu primer pedido aparecerá aquí.</div>';return `<section class="mar-workspace"><main class="mar-left"><header class="mar-title"><span class="eyebrow">LINKDOT MAR · ${esc(state.business?.name||'LINKRRSS')}</span><h1>¿Qué hacemos?</h1><p>Cuéntame qué necesitas. Adjunta fotos o videos y me encargo del resto.</p></header><form class="mar-request" id="mar-request"><textarea id="mar-instruction" rows="4" placeholder="Ej: Con esta foto haz un reel para Caracol invitando a cenar los sábados. Algo simple y moderno." required></textarea><div class="mar-request-actions"><label class="mar-attach">＋ Adjuntar material<input id="mar-files" type="file" accept="image/*,video/*,audio/*" multiple hidden></label><span id="mar-file-count">Sin archivos</span><button type="submit">Enviar a MAR</button></div></form><section class="mar-progress"><header><b>MAR organiza el trabajo</b><span>automático</span></header><div><i>✓</i><span>Entiende tu pedido</span></div><div><i>✓</i><span>Busca el contexto del negocio</span></div><div><i>→</i><span>Coordina las herramientas necesarias</span></div><div><i>→</i><span>Te muestra el resultado</span></div></section><section class="recent"><header><h2>Trabajos recientes</h2><span>${rows.length}</span></header><div class="recent-grid">${recent}</div></section></main><aside class="mar-right">${resultPanel(selected)}</aside></section>`;}
+export function bindStudio({state,db,renderApp,toast}){const files=document.querySelector('#mar-files'),count=document.querySelector('#mar-file-count'),form=document.querySelector('#mar-request');if(files)files.onchange=()=>{const n=files.files?.length||0;count.textContent=n?`${n} archivo${n===1?'':'s'}`:'Sin archivos';};if(!form)return;form.onsubmit=async e=>{e.preventDefault();const instruction=document.querySelector('#mar-instruction')?.value?.trim();if(!instruction)return;const submit=form.querySelector('button[type=submit]');submit.disabled=true;const attached=[...(files?.files||[])].map(f=>({name:f.name,type:f.type,size:f.size,status:'pending_ingestion'}));const {data,error}=await db.from('link_rrss_studio_projects').insert({business_id:state.business.id,name:instruction.slice(0,72),intent:'adapt',status:'draft',aspect_ratio:'9:16',brief:instruction,editor_state:{request:instruction,automation_mode:'instruction_only',attachments:attached,pipeline:['MAR entiende','contexto','coordina','produce','resultado','aprobación','publicación']},brand_contract:{business_id:state.business.id,business:state.business.name},source_adapter:'mar'}).select('id').single();if(error){toast(error.message||String(error),true);submit.disabled=false;return;}if(attached.length){const assets=attached.map((a,i)=>({project_id:data.id,asset_type:a.type.startsWith('video/')?'video':a.type.startsWith('audio/')?'audio':'image',name:a.name,original_name:a.name,mime_type:a.type,size_bytes:a.size,ingestion_status:'pending',sort_order:(i+1)*10,metadata:{source:'browser_attachment',needs_ingestion:true}}));await db.from('link_rrss_studio_assets').insert(assets);}await loadStudio({state,db});toast('MAR recibió el pedido.');renderApp();};}
