@@ -62,6 +62,10 @@ const state = {
   selectedConversationId: null,
   conversationMessages: {},
   conversationLoading: {},
+  translateDimension: false,
+  translateLanguage: 'original',
+  conversationTranslations: {},
+  translationLoading: {},
   conversationControl: [],
   conversationFilter: 'all',
   conversationChannel: 'all',
@@ -1720,7 +1724,21 @@ function bind(){
       if(account) state.activeAccount=account;
     }
     state.selectedConversationId=btn.dataset.conversation;
+    state.translateDimension=false;
+    state.translateLanguage='original';
     renderApp();
+  });
+  document.querySelectorAll('[data-translate-dimension]').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.translateDimension;
+    state.translateDimension=!state.translateDimension;
+    state.translateLanguage=state.translateDimension?'es':'original';
+    renderApp();
+    if(state.translateDimension) await loadConversationTranslations(id);
+  });
+  document.querySelectorAll('[data-translate-lang]').forEach(btn=>btn.onclick=async()=>{
+    state.translateLanguage=btn.dataset.translateLang||'original';
+    renderApp();
+    if(state.translateLanguage!=='original'&&state.selectedConversationId) await loadConversationTranslations(state.selectedConversationId);
   });
   document.querySelectorAll('[data-ce-state]').forEach(btn=>btn.onclick=()=>{state.conversationFilter=btn.dataset.ceState||'all';renderApp();});
   $('#ce-channel')?.addEventListener('change',e=>{state.conversationChannel=e.target.value||'all';renderApp();});
@@ -1814,6 +1832,31 @@ async function loadConversationMessages(conversationId){
     toast('No se pudo abrir el hilo completo: '+(e.message||String(e)),true);
   }finally{
     state.conversationLoading[conversationId]=false;
+    renderApp();
+  }
+}
+
+async function loadConversationTranslations(conversationId){
+  if(!conversationId||state.translationLoading[conversationId])return;
+  const messages=normalizeMessages(state.conversationMessages?.[conversationId]);
+  if(!messages.length)return;
+  const existing=state.conversationTranslations?.[conversationId];
+  if(existing?.es?.length===messages.length&&existing?.pt?.length===messages.length&&existing?.en?.length===messages.length)return;
+  state.translationLoading[conversationId]=true;
+  renderApp();
+  try{
+    const response=await fetch('/api/translate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({texts:messages.map(m=>m.text),targets:['es','pt','en'],mode:'conversation'})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data?.error||'No se pudo traducir la conversación.');
+    state.conversationTranslations[conversationId]=data.translations||{};
+  }catch(e){
+    toast('Translate: '+(e.message||String(e)),true);
+  }finally{
+    state.translationLoading[conversationId]=false;
     renderApp();
   }
 }
