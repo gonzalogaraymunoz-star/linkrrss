@@ -256,6 +256,25 @@ function intelligenceMarkup(row){
   '</aside>';
 }
 
+function deepSearchMarkup(state){
+  const q=String(state.conversationDeepSearchQuery||'');
+  const rows=state.conversationDeepSearchResults||[];
+  const loading=Boolean(state.conversationDeepSearchLoading);
+  const error=state.conversationDeepSearchError||'';
+  return '<section class="ce-deep-search-panel">'+
+    '<form id="ce-deep-search-form" class="ce-deep-search-form">'+
+      '<div><span class="eyebrow">BUSCADOR TRANSVERSAL</span><strong>Buscar dentro de todas las conversaciones</strong><small>Busca palabras dentro de los mensajes guardados de este negocio.</small></div>'+
+      '<label><span>⌕</span><input id="ce-deep-search" value="'+esc(q)+'" placeholder="Ej: Yasmeen, Piedras Rojas, alergia, pago, pickup…"></label>'+
+      '<button type="submit">'+(loading?'Buscando…':'Buscar')+'</button>'+
+      (q?'<button type="button" id="ce-deep-search-clear" class="ghost">Limpiar</button>':'')+
+    '</form>'+
+    (error?'<div class="ce-deep-search-error">'+esc(error)+'</div>':'')+
+    (q&&!loading?'<div class="ce-deep-search-meta"><strong>'+rows.length+' coincidencia'+(rows.length===1?'':'s')+'</strong><span>en mensajes guardados</span></div>':'')+
+    (rows.length?'<div class="ce-deep-search-results">'+rows.map(r=>'<button class="ce-deep-result" data-ce-search-result="'+esc(r.external_conversation_id)+'" data-account-id="'+esc(r.account_id||'')+'">'+
+      '<span class="ce-platform-dot">'+esc(platformMark(r.platform))+'</span><div><strong>'+esc(r.participant_name||'Contacto')+'</strong><p>'+esc(r.message||'')+'</p><small>'+esc(dateLabel(r.platform_created_at||r.created_at))+' · '+esc(r.direction||'mensaje')+'</small></div><b>→</b></button>').join('')+'</div>':'')+
+  '</section>';
+}
+
 export function comunEscuchaSection({state}){
   if(!state.canManage){
     return '<section class="section-heading compact"><div><span class="eyebrow">COMUNESCUCHA</span><h1>Conversaciones</h1><p>La memoria social es privada. Entra en modo Administración para leer, clasificar y responder.</p></div></section>';
@@ -280,17 +299,20 @@ export function comunEscuchaSection({state}){
       '<div class="ce-pulse"><span></span><div><strong>ComunEscucha activo</strong><small>evento → ficha → especialista</small></div></div>'+
     '</header>'+
     '<div class="ce-toolbar">'+
-      '<label class="ce-search"><span>⌕</span><input id="ce-search" value="'+esc(state.conversationQuery||'')+'" placeholder="Buscar nombre, teléfono, palabra, tour o solicitud"></label>'+
+      '<label class="ce-search"><span>⌕</span><input id="ce-search" value="'+esc(state.conversationQuery||'')+'" placeholder="Filtrar fichas por nombre, teléfono, tour o estado"></label>'+
       '<select id="ce-channel"><option value="all">Todos los canales</option>'+channels.map(c=>'<option value="'+esc(c)+'" '+(state.conversationChannel===c?'selected':'')+'>'+esc(c[0].toUpperCase()+c.slice(1))+'</option>').join('')+'</select>'+
       '<span class="ce-business-pill">'+esc(state.business?.name||'Negocio')+'</span>'+
     '</div>'+
+    deepSearchMarkup(state)+
     '<div class="ce-tabbar">'+tabs.map(([key,label,count])=>'<button data-ce-state="'+esc(key)+'" class="'+((state.conversationFilter||'all')===key?'active':'')+'"><span>'+esc(label)+'</span><b>'+count+'</b></button>').join('')+'</div>'+
     '<div class="comunescucha-shell">'+
       '<aside class="ce-list">'+
         '<div class="ce-list-head"><div><strong>'+rows.length+' conversaciones</strong><small>ordenadas por atención y actividad</small></div><span>'+stats.reply+' por responder</span></div>'+
         '<div class="ce-list-scroll">'+(rows.length?rows.map(r=>conversationCard(r,selected?.conversation_id===r.conversation_id)).join(''):'<div class="ce-list-empty">No hay conversaciones con estos filtros.</div>')+'</div>'+
       '</aside>'+
+      '<div class="ce-resizer left" data-ce-resizer="left" role="separator" aria-label="Ajustar ancho de lista" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       threadMarkup(state,selected)+
+      '<div class="ce-resizer right" data-ce-resizer="right" role="separator" aria-label="Ajustar ancho de inteligencia" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       intelligenceMarkup(selected)+
     '</div>'+
     '<footer class="ce-flow"><span><b>1</b>Mensaje</span><i>→</i><span><b>2</b>ComunEscucha</span><i>→</i><span><b>3</b>Especialista</span><i>→</i><span><b>4</b>Aparato</span><i>→</i><span><b>5</b>Respuesta</span><i>→</i><span><b>6</b>Feedback</span></footer>'+
