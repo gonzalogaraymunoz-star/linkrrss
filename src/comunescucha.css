@@ -276,3 +276,20 @@ body.ce-resizing *{cursor:col-resize!important}
   .ce-deep-search-form{grid-template-columns:1fr}
   .ce-deep-search-results{grid-template-columns:1fr}
 }
+
+
+/* ComunEscucha · live world sync */
+.ce-live-sync{display:flex;align-items:center;gap:9px;margin-left:auto}
+.ce-live-sync button{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 12px;border:1px solid rgba(17,17,17,.14);border-radius:10px;background:#111;color:#fff;font:700 11px/1 system-ui;cursor:pointer;white-space:nowrap}
+.ce-live-sync button:hover{transform:translateY(-1px)}
+.ce-live-sync button:disabled{cursor:wait;opacity:.7;transform:none}
+.ce-live-sync button span{display:inline-block;font-size:16px;line-height:1}
+.ce-live-sync button.refreshing span{animation:ce-spin .8s linear infinite}
+.ce-live-sync small{display:flex;align-items:center;gap:5px;color:#777;font-size:10px;white-space:nowrap}
+.ce-live-sync small i{width:6px;height:6px;border-radius:50%;background:#9be000;box-shadow:0 0 0 3px rgba(155,224,0,.12)}
+@keyframes ce-spin{to{transform:rotate(360deg)}}
+@media(max-width:980px){
+  .ce-toolbar{flex-wrap:wrap}
+  .ce-live-sync{order:3;width:100%;margin-left:0;justify-content:space-between}
+  .ce-live-sync button{flex:0 0 auto}
+}
