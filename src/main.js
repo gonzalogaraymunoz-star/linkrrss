@@ -653,13 +653,26 @@ function renderDenied(){
   $('#logout').onclick=()=>db.auth.signOut().then(()=>loadBase());
 }
 
+// LINK RRSS SIDEBAR COLLAPSE
+function isSidebarCollapsed(){
+  try{return localStorage.getItem('linkrrss.sidebar.collapsed')==='1';}catch{return false;}
+}
+function setSidebarCollapsed(value){
+  document.body.classList.toggle('sidebar-collapsed',Boolean(value));
+  try{localStorage.setItem('linkrrss.sidebar.collapsed',value?'1':'0');}catch{}
+}
+function toggleSidebar(){setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));}
+
 function sidebar(){
   const visible=state.businesses.filter(b=>!state.search || b.name.toLowerCase().includes(state.search.toLowerCase()));
   return `
     <aside class="sidebar">
       <div class="side-top">
         <div class="app-title"><span class="brand-mark small">L</span><div><strong>LINK RRSS</strong><small>aparato social</small></div></div>
-        <button class="icon-btn" id="close-mobile">×</button>
+        <div class="side-top-actions">
+          <button class="sidebar-collapse-btn" id="sidebar-collapse" type="button" title="Contraer o expandir menú" aria-label="Contraer o expandir menú"><span>‹</span></button>
+          <button class="icon-btn" id="close-mobile">×</button>
+        </div>
       </div>
       ${state.canManage?'<button class="new-connection" id="quick-connect"><span>＋</span>Nueva conexión</button>':'<button class="new-connection" id="admin-access"><span>⌁</span>Administrar</button>'}
       <div class="side-search"><i data-lucide="search"></i><input id="business-search" placeholder="Buscar negocio" value="${safe(state.search)}"></div>
@@ -1611,6 +1624,7 @@ function bodySection(){
 }
 
 function renderApp(){
+  setSidebarCollapsed(isSidebarCollapsed());
   $('#app').innerHTML=`
     <div class="app-shell">
       ${sidebar()}
@@ -1673,6 +1687,7 @@ function bind(){
   $('#mobile-menu')?.addEventListener('click',()=>document.body.classList.add('side-open'));
   $('#close-mobile')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   $('#mobile-scrim')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
+  $('#sidebar-collapse')?.addEventListener('click',toggleSidebar);
   document.querySelectorAll('[data-source-sync]').forEach(btn=>btn.onclick=()=>syncSource(btn.dataset.sourceSync));
   document.querySelectorAll('[data-source-connect]').forEach(btn=>btn.onclick=()=>openNetworkModal(btn.dataset.sourceConnect));
 
