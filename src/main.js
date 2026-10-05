@@ -70,6 +70,10 @@ const state = {
   conversationFilter: 'all',
   conversationChannel: 'all',
   conversationQuery: '',
+  conversationDeepSearchQuery: '',
+  conversationDeepSearchResults: [],
+  conversationDeepSearchLoading: false,
+  conversationDeepSearchError: '',
   socialActivity: [],
   panelRefreshAt: new Map(),
   activityType: 'all',
@@ -1747,6 +1751,18 @@ function bind(){
     renderApp();
     const input=$('#ce-search'); if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
   });
+  $('#ce-deep-search-form')?.addEventListener('submit',e=>{e.preventDefault();deepSearchConversations($('#ce-deep-search')?.value||'');});
+  $('#ce-deep-search-clear')?.addEventListener('click',()=>{state.conversationDeepSearchQuery='';state.conversationDeepSearchResults=[];state.conversationDeepSearchError='';renderApp();});
+  document.querySelectorAll('[data-ce-search-result]').forEach(btn=>btn.onclick=async()=>{
+    const accountId=btn.dataset.accountId;
+    if(accountId){const account=state.accounts.find(x=>x.id===accountId);if(account)state.activeAccount=account;}
+    state.selectedConversationId=btn.dataset.ceSearchResult;
+    state.conversationDeepSearchResults=[];
+    state.conversationDeepSearchQuery='';
+    renderApp();
+    if(!state.conversationMessages[state.selectedConversationId]) await loadConversationMessages(state.selectedConversationId);
+  });
+  bindComunEscuchaResizers();
   document.querySelectorAll('[data-ce-prompt]').forEach(btn=>btn.onclick=()=>{
     const box=$('#ce-work-input'); if(box){box.value=btn.dataset.cePrompt||'';box.focus();}
   });
@@ -1813,6 +1829,101 @@ async function loadCurrentSection(){
     await loadConversationMessages(state.selectedConversationId);
   }
   if(state.section==='activity') await loadActivityComments();
+}
+
+async function deepSearchConversations(query){
+  const q=String(query||'').trim();
+  state.conversationDeepSearchQuery=q;
+  state.conversationDeepSearchError='';
+  if(q.length<2){
+    state.conversationDeepSearchResults=[];
+    state.conversationDeepSearchLoading=false;
+    renderApp();
+    return;
+  }
+  const rows=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id);
+  const ids=[...new Set(rows.map(r=>r.conversation_id).filter(Boolean))];
+  if(!ids.length){state.conversationDeepSearchResults=[];renderApp();return;}
+  state.conversationDeepSearchLoading=true;
+  renderApp();
+  try{
+    const {data,error}=await db.from('link_rrss_messages')
+      .select('conversation_id,message,direction,sender_name,platform_created_at,created_at')
+      .in('conversation_id',ids)
+      .ilike('message','%'+q.replace(/[%_]/g,'')+'%')
+      .order('platform_created_at',{ascending:false,nullsFirst:false})
+      .limit(80);
+    if(error) throw error;
+    const byId=new Map(rows.map(r=>[String(r.conversation_id),r]));
+    state.conversationDeepSearchResults=(data||[]).map(item=>{
+      const row=byId.get(String(item.conversation_id))||{};
+      return {
+        ...item,
+        external_conversation_id:row.external_conversation_id,
+        account_id:row.account_id,
+        participant_name:row.participant_name||row.participant_username||'Contacto',
+        platform:row.platform||'RRSS'
+      };
+    }).filter(x=>x.external_conversation_id);
+  }catch(e){
+    state.conversationDeepSearchError=e.message||String(e);
+    state.conversationDeepSearchResults=[];
+  }finally{
+    state.conversationDeepSearchLoading=false;
+    renderApp();
+    const input=$('#ce-deep-search'); if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+  }
+}
+
+function bindComunEscuchaResizers(){
+  const shell=document.querySelector('.comunescucha-shell');
+  if(!shell||window.matchMedia('(max-width:1180px)').matches)return;
+  const key='linkrrss.ce.panels.'+(state.business?.id||'global');
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
+  const apply=()=>{
+    if(saved.left) shell.style.setProperty('--ce-left-width',saved.left+'px');
+    if(saved.right) shell.style.setProperty('--ce-right-width',saved.right+'px');
+  };
+  apply();
+  shell.querySelectorAll('[data-ce-resizer]').forEach(handle=>{
+    handle.onpointerdown=e=>{
+      e.preventDefault();
+      handle.setPointerCapture?.(e.pointerId);
+      const startX=e.clientX;
+      const rect=shell.getBoundingClientRect();
+      const list=shell.querySelector('.ce-list')?.getBoundingClientRect();
+      const intelligence=shell.querySelector('.ce-intelligence')?.getBoundingClientRect();
+      const side=handle.dataset.ceResizer;
+      const start=side==='left'?(list?.width||280):(intelligence?.width||300);
+      document.body.classList.add('ce-resizing');
+      const move=ev=>{
+        const dx=ev.clientX-startX;
+        let next=side==='left'?start+dx:start-dx;
+        const max=side==='left'?Math.min(470,rect.width*.42):Math.min(520,rect.width*.45);
+        const min=side==='left'?210:250;
+        next=Math.max(min,Math.min(max,next));
+        shell.style.setProperty(side==='left'?'--ce-left-width':'--ce-right-width',Math.round(next)+'px');
+      };
+      const up=()=>{
+        document.removeEventListener('pointermove',move);
+        document.removeEventListener('pointerup',up);
+        document.body.classList.remove('ce-resizing');
+        const listW=shell.querySelector('.ce-list')?.getBoundingClientRect().width;
+        const rightW=shell.querySelector('.ce-intelligence')?.getBoundingClientRect().width;
+        saved={left:Math.round(listW||280),right:Math.round(rightW||300)};
+        try{localStorage.setItem(key,JSON.stringify(saved));}catch{}
+      };
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up,{once:true});
+    };
+    handle.ondblclick=()=>{
+      saved={left:280,right:300};
+      shell.style.setProperty('--ce-left-width','280px');
+      shell.style.setProperty('--ce-right-width','300px');
+      try{localStorage.setItem(key,JSON.stringify(saved));}catch{}
+    };
+  });
 }
 
 async function loadConversationMessages(conversationId){
