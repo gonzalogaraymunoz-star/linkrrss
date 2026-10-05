@@ -284,6 +284,8 @@ export function comunEscuchaSection({state}){
   const stats=topStats(all);
   const selected=all.find(r=>String(r.external_conversation_id)===String(state.selectedConversationId))||null;
   const channels=[...new Set(all.map(r=>String(r.platform||'').toLowerCase()).filter(Boolean))].sort();
+  const lastSync=state.lastInboxRefreshAt||state.workspace?.last_full_sync_at||null;
+  const refreshLabel=state.inboxRefreshing?'Actualizando…':'Actualizar ahora';
   const tabs=[
     ['all','Todas',stats.total],
     ['por_responder','Por responder',stats.reply],
@@ -301,6 +303,10 @@ export function comunEscuchaSection({state}){
     '<div class="ce-toolbar">'+
       '<label class="ce-search"><span>⌕</span><input id="ce-search" value="'+esc(state.conversationQuery||'')+'" placeholder="Filtrar fichas por nombre, teléfono, tour o estado"></label>'+
       '<select id="ce-channel"><option value="all">Todos los canales</option>'+channels.map(c=>'<option value="'+esc(c)+'" '+(state.conversationChannel===c?'selected':'')+'>'+esc(c[0].toUpperCase()+c.slice(1))+'</option>').join('')+'</select>'+
+      '<div class="ce-live-sync">'+
+        '<button id="ce-refresh" class="'+(state.inboxRefreshing?'refreshing':'')+'" '+(state.inboxRefreshing?'disabled':'')+'><span>↻</span>'+esc(refreshLabel)+'</button>'+
+        '<small><i></i>'+(lastSync?'Última sync '+esc(dateLabel(lastSync)):'Sin sincronizar aún')+' · auto 20 s</small>'+
+      '</div>'+
       '<span class="ce-business-pill">'+esc(state.business?.name||'Negocio')+'</span>'+
     '</div>'+
     deepSearchMarkup(state)+
