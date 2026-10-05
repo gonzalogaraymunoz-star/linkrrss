@@ -66,6 +66,9 @@ const state = {
   translateLanguage: 'original',
   conversationTranslations: {},
   translationLoading: {},
+  inboxRefreshing: false,
+  lastInboxRefreshAt: null,
+  inboxPollTimer: null,
   conversationControl: [],
   conversationFilter: 'all',
   conversationChannel: 'all',
@@ -1649,6 +1652,7 @@ function renderApp(){
     <div id="toast" class="toast hidden"></div>`;
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
+  configureInboxPolling();
   setTimeout(()=>loadCurrentSection(),0);
 }
 
@@ -1732,6 +1736,7 @@ function bind(){
     state.translateLanguage='original';
     renderApp();
   });
+  $('#ce-refresh')?.addEventListener('click',()=>refreshInboxWorld({silent:false}));
   document.querySelectorAll('[data-translate-dimension]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.translateDimension;
     state.translateDimension=!state.translateDimension;
@@ -1818,15 +1823,25 @@ async function loadCurrentSection(){
   }
   if(state.section==='artifacts')return;
   if(!state.canManage||!state.business||!state.sources.length)return;
+
+  if(state.section==='inbox'){
+    const last=state.lastInboxRefreshAt?new Date(state.lastInboxRefreshAt).getTime():0;
+    if(!last || Date.now()-last>20000){
+      await refreshInboxWorld({silent:true});
+      return;
+    }
+    if(state.selectedConversationId&&!state.conversationMessages[state.selectedConversationId]){
+      await loadConversationMessages(state.selectedConversationId);
+    }
+    return;
+  }
+
   const key=[state.business.id,state.activeAccount?.id||'source',state.section].join(':');
   const last=state.panelRefreshAt.get(key)||0;
   if(Date.now()-last>45000){
     state.panelRefreshAt.set(key,Date.now());
     await maybeAutoSync(true);
     return;
-  }
-  if(state.section==='inbox'&&state.selectedConversationId&&!state.conversationMessages[state.selectedConversationId]){
-    await loadConversationMessages(state.selectedConversationId);
   }
   if(state.section==='activity') await loadActivityComments();
 }
@@ -1926,6 +1941,54 @@ function bindComunEscuchaResizers(){
   });
 }
 
+function configureInboxPolling(){
+  if(state.inboxPollTimer){
+    clearInterval(state.inboxPollTimer);
+    state.inboxPollTimer=null;
+  }
+  if(state.section!=='inbox'||!state.canManage||!state.business)return;
+  state.inboxPollTimer=setInterval(()=>{
+    if(document.hidden||state.section!=='inbox'||state.inboxRefreshing)return;
+    refreshInboxWorld({silent:true});
+  },20000);
+}
+
+async function refreshInboxWorld({silent=false}={}){
+  if(!state.canManage||!state.business||!state.sources.length||state.inboxRefreshing||state.syncing)return;
+  const selectedId=state.selectedConversationId;
+  state.inboxRefreshing=true;
+  if(!silent) renderApp();
+  try{
+    await invokeZernio({
+      action:'sync.business',
+      business_id:state.business.id,
+      trigger:silent?'inbox_poll':'inbox_manual'
+    });
+    state.lastInboxRefreshAt=new Date().toISOString();
+    state.panelRefreshAt.set([state.business.id,state.activeAccount?.id||'source','inbox'].join(':'),Date.now());
+
+    if(selectedId){
+      delete state.conversationMessages[selectedId];
+      delete state.conversationTranslations[selectedId];
+    }
+
+    await loadBusiness({restore:false});
+
+    if(selectedId && state.section==='inbox'){
+      state.selectedConversationId=selectedId;
+      await loadConversationMessages(selectedId);
+      if(state.translateDimension) await loadConversationTranslations(selectedId);
+    }
+
+    if(!silent) toast('Conversaciones actualizadas con el mundo real.');
+  }catch(e){
+    if(!silent) toast('No se pudo actualizar: '+(e.message||String(e)),true);
+  }finally{
+    state.inboxRefreshing=false;
+    if(state.section==='inbox') renderApp();
+  }
+}
+
 async function loadConversationMessages(conversationId){
   const source=sourceForActiveAccount();
   if(!source||!state.activeAccount||!conversationId)return;
@@ -2014,6 +2077,7 @@ async function sendConversationReply(conversationId){
     delete state.conversationMessages[conversationId];
     await loadConversationMessages(conversationId);
     await saveConversationStatus(conversationId,'open');
+    await refreshInboxWorld({silent:true});
   }catch(e){toast(e.message||String(e),true);}
   finally{if(submit)submit.disabled=false;}
 }
