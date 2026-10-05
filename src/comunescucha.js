@@ -123,6 +123,11 @@ function threadMarkup(state,row){
   const id=String(row.external_conversation_id);
   const messages=normalizeMessages(state.conversationMessages?.[id]);
   const loading=state.conversationLoading?.[id];
+  const translating=state.translationLoading?.[id];
+  const translateOn=Boolean(state.translateDimension);
+  const language=state.translateLanguage||'original';
+  const translated=state.conversationTranslations?.[id]||{};
+  const languageLabel={original:'Original',es:'Español',pt:'Português',en:'English'}[language]||language;
   const status=statusFromWorkspace(state,row);
   const quick=[
     ['Qué está pidiendo','Resume la solicitud actual y dime qué falta para resolverla.'],
@@ -133,11 +138,12 @@ function threadMarkup(state,row){
   return '<section class="ce-thread">'+
     '<header class="ce-thread-head">'+
       '<div class="ce-thread-person"><span class="ce-avatar large">'+(row.participant_picture?'<img src="'+esc(row.participant_picture)+'" alt="">':esc((row.participant_name||row.participant_username||'?').slice(0,1).toUpperCase()))+'</span><div><strong>'+esc(row.participant_name||row.participant_username||'Contacto')+'</strong><small>'+esc(row.platform||'RRSS')+' · '+esc(row.account_username||'cuenta')+'</small></div></div>'+
-      '<div class="ce-thread-actions"><span class="ce-listener">ComunEscucha</span><label>Estado<select data-conversation-status="'+esc(id)+'"><option value="pending" '+(status==='pending'?'selected':'')+'>Por responder</option><option value="open" '+(status==='open'?'selected':'')+'>En curso</option><option value="resolved" '+(status==='resolved'?'selected':'')+'>Resuelta</option></select></label>'+(Number(row.unread_count||0)>0?'<button data-mark-read="'+esc(id)+'">Marcar leído</button>':'')+'</div>'+
+      '<div class="ce-thread-actions"><button class="ce-translate-entry '+(translateOn?'active':'')+'" data-translate-dimension="'+esc(id)+'"><span>文</span>'+(translateOn?'Salir de Translate':'Dimensión Translate')+'</button><span class="ce-listener">ComunEscucha</span><label>Estado<select data-conversation-status="'+esc(id)+'"><option value="pending" '+(status==='pending'?'selected':'')+'>Por responder</option><option value="open" '+(status==='open'?'selected':'')+'>En curso</option><option value="resolved" '+(status==='resolved'?'selected':'')+'>Resuelta</option></select></label>'+(Number(row.unread_count||0)>0?'<button data-mark-read="'+esc(id)+'">Marcar leído</button>':'')+'</div>'+
     '</header>'+
-    '<div class="ce-message-thread">'+
+    (translateOn?'<div class="ce-translate-dimension"><div><span class="eyebrow">LINK · TRANSLATE</span><strong>Dimensión de traducción</strong><small>La evidencia original se conserva. Cambia de idioma sin salir del hilo.</small></div><div class="ce-language-tabs">'+['original','es','pt','en'].map(lang=>'<button data-translate-lang="'+lang+'" class="'+(language===lang?'active':'')+'">'+({original:'Original',es:'ES',pt:'PT',en:'EN'}[lang])+'</button>').join('')+'</div><span class="ce-translate-state">'+(translating?'Traduciendo…':languageLabel)+'</span></div>':'')+
+    '<div class="ce-message-thread '+(translateOn?'translate-mode':'')+'">'+
       (loading?'<div class="ce-loading">Recuperando hilo…</div>':messages.length
-        ? messages.map(m=>'<div class="ce-message '+(m.outgoing?'outgoing':'incoming')+'"><p>'+esc(m.text)+'</p><small>'+esc(dateLabel(m.date))+'</small></div>').join('')
+        ? messages.map((m,index)=>{const text=translateOn&&language!=='original'?(translated?.[language]?.[index]||m.text):m.text;return '<div class="ce-message '+(m.outgoing?'outgoing':'incoming')+'"><p>'+esc(text)+'</p>'+(translateOn&&language!=='original'?'<span class="ce-original-peek">Original · '+esc(m.text)+'</span>':'')+'<small>'+esc(dateLabel(m.date))+'</small></div>';}).join('')
         : '<div class="ce-loading"><strong>Hilo guardado</strong><span>'+esc(row.last_message||'Sin vista previa')+'</span><small>LINK abrirá el historial completo al seleccionar esta conversación.</small></div>')+
     '</div>'+
     '<div class="ce-workbench">'+
