@@ -88,7 +88,7 @@ const nav = [
   ['artifacts','Artefactos',Workflow],
   ['inbox','Conversaciones',MessageCircle],
   ['content','Contenido',FileText],
-  ['studio','Studio',Music2],
+  ['studio','Ecosistema',Music2],
   ['operation','Operación',Activity],
   ['calendar','Calendario',CalendarDays],
   ['analytics','Analytics',ChartNoAxesCombined],
