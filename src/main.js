@@ -6,6 +6,8 @@ import { operationSection, bindOperation } from './operation.js';
 import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
 import { bootKaraokeRoute } from './karaoke.js';
 import { loadStudio, studioSection, bindStudio } from './studio.js';
+import { comunEscuchaSection } from './comunescucha.js';
+import './comunescucha.css';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -60,6 +62,10 @@ const state = {
   selectedConversationId: null,
   conversationMessages: {},
   conversationLoading: {},
+  conversationControl: [],
+  conversationFilter: 'all',
+  conversationChannel: 'all',
+  conversationQuery: '',
   socialActivity: [],
   panelRefreshAt: new Map(),
   activityType: 'all',
@@ -261,7 +267,7 @@ async function loadBusiness(opts={}){
 
   const accountIds=state.accounts.map(x=>x.id);
   if(state.canManage){
-    const [ws,snaps,runs,activity,posts,conversations,memory,drafts,operationPlans,operationTasks]=await Promise.all([
+    const [ws,snaps,runs,activity,posts,conversations,conversationControl,memory,drafts,operationPlans,operationTasks]=await Promise.all([
       db.from('link_rrss_workspace_state').select('*').eq('business_id',id).maybeSingle(),
       db.from('link_rrss_snapshots').select('*').eq('business_id',id).order('fetched_at',{ascending:false}),
       db.from('link_rrss_sync_runs').select('*').eq('business_id',id).order('started_at',{ascending:false}).limit(12),
@@ -274,6 +280,7 @@ async function loadBusiness(opts={}){
       accountIds.length
         ? db.from('link_rrss_conversations').select('*').in('account_id',accountIds).order('last_message_at',{ascending:false}).limit(1000)
         : Promise.resolve({data:[]}),
+      db.from('link_rrss_comunescucha_panel_v').select('*').eq('business_id',id).order('last_activity_at',{ascending:false}).limit(1000),
       accountIds.length
         ? db.from('link_rrss_account_memory').select('*').in('account_id',accountIds)
         : Promise.resolve({data:[]}),
@@ -289,6 +296,7 @@ async function loadBusiness(opts={}){
     state.socialActivity=activity.data||[];
     state.persistentPosts=posts.data||[];
     state.persistentConversations=conversations.data||[];
+    state.conversationControl=conversationControl.data||[];
     state.accountMemory=memory.data||[];
     state.publicationDrafts=drafts.data||[];
     state.operationPlans=operationPlans.data||[];
@@ -308,7 +316,7 @@ async function loadBusiness(opts={}){
       db.from('link_rrss_public_posts_v').select('*').eq('business_id',id).order('published_at',{ascending:false}).limit(2000),
       db.from('link_rrss_public_memory_v').select('*').eq('business_id',id)
     ]);
-    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[]; state.notifications=[]; state.dotWorkspace=null; state.dotSubdots=[]; state.dotArtifacts=[];
+    state.snapshots=[]; state.syncRuns=[]; state.socialActivity=[]; state.persistentConversations=[]; state.conversationControl=[]; state.publicationDrafts=[]; state.operationPlans=[]; state.operationTasks=[]; state.notifications=[]; state.dotWorkspace=null; state.dotSubdots=[]; state.dotArtifacts=[];
     state.persistentPosts=posts.data||[];
     state.accountMemory=memory.data||[];
     if(!state.activeAccount || !state.accounts.some(x=>x.id===state.activeAccount.id)){
@@ -850,40 +858,8 @@ function emptyMemory(title,text){
 }
 
 function inboxSection(){
-  if(!state.activeAccount) return noAccounts('Conversaciones');
-  if(!state.canManage) return '<section class="section-heading compact"><div><span class="eyebrow">INBOX / '+safe(state.activeAccount.platform.toUpperCase())+'</span><h1>Conversaciones</h1><p>El contenido del Inbox es privado. La memoria existe y se mantiene en LINK RRSS, pero debes entrar en modo Administración para leer, clasificar y responder mensajes.</p></div></section><section class="panel private-panel"><span class="eyebrow">MEMORIA PRIVADA</span><h2>Las conversaciones están protegidas.</h2><p>Las publicaciones y analíticas públicas sí permanecen visibles. Los mensajes directos solo se muestran a miembros LINK autenticados.</p><button class="primary" id="admin-inbox-access">Administrar Inbox</button></section>';
-  const snap=snapshotFor('inbox');
-  if(!snap) return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+emptyMemory('Preparando Inbox','LINK RRSS está construyendo la primera memoria de esta cuenta.');
-  if(snap.status==='blocked'||snap.status==='error') return '<section class="section-heading compact"><div><span class="eyebrow">INBOX</span><h1>Conversaciones</h1></div></section>'+issuePanel('Inbox no disponible',snap);
-  const rows=conversationRows().filter(c=>inPeriod(conversationDate(c)));
-  const selected=rows.find(c=>String(c.id||c._id)===String(state.selectedConversationId))||null;
-  const messages=selected?normalizeMessages(state.conversationMessages[String(selected.id||selected._id)]):[];
-  const selectedId=selected?String(selected.id||selected._id):'';
-  const selectedStatus=selected?conversationStatus(selectedId,selected):'';
-  const detail=!selected
-    ? '<div class="conversation-empty"><i data-lucide="message-circle"></i><strong>Selecciona una conversación</strong><span>Verás el hilo, estado, sugerencias y respuesta desde LINK.</span></div>'
-    : '<div class="conversation-detail">'+
-      '<header class="conversation-detail-head"><div class="conversation-person"><span class="conversation-avatar large">'+(selected.participantPicture?'<img src="'+safe(selected.participantPicture)+'" alt="">':safe((selected.participantName||selected.participantUsername||'?')[0]?.toUpperCase()||'?'))+'</span><div><strong>'+safe(selected.participantName||selected.participantUsername||'Contacto')+'</strong><small>'+safe(selected.participantUsername?'@'+selected.participantUsername:state.activeAccount.platform)+'</small></div></div>'+
-      '<div class="conversation-state"><label>ESTADO<select data-conversation-status="'+safe(selectedId)+'"><option value="pending" '+(selectedStatus==='pending'?'selected':'')+'>Por responder</option><option value="open" '+(selectedStatus==='open'?'selected':'')+'>En curso</option><option value="resolved" '+(selectedStatus==='resolved'?'selected':'')+'>Resuelta</option></select></label>'+
-      (Number(selected.unreadCount||0)>0?'<button data-mark-read="'+safe(selectedId)+'">Marcar leído</button>':'')+'</div></header>'+
-      '<div class="message-thread">'+(state.conversationLoading[selectedId]
-        ? '<div class="loading-panel">Cargando conversación…</div>'
-        : messages.length
-          ? messages.map(m=>'<div class="message-bubble '+(m.outgoing?'outgoing':'incoming')+'"><p>'+safe(m.text)+'</p><small>'+safe(fmtDate(m.date))+'</small></div>').join('')
-          : '<div class="thread-preview"><span>ÚLTIMO MENSAJE</span><p>'+safe(conversationText(selected))+'</p><small>Abriendo el hilo completo desde Zernio…</small></div>')+'</div>'+
-      '<div class="reply-assist"><span class="eyebrow">RESPUESTAS SUGERIDAS</span><div class="reply-suggestions">'+suggestedReplies(selected).map(x=>'<button data-suggest-reply="'+safe(x)+'">'+safe(x)+'</button>').join('')+'</div></div>'+
-      (state.canManage?'<form class="reply-composer" data-reply-form="'+safe(selectedId)+'"><textarea id="conversation-reply" rows="3" placeholder="Escribe una respuesta…"></textarea><div><small>Se enviará por '+safe(state.activeAccount.platform)+' mediante Zernio.</small><button class="primary" type="submit"><i data-lucide="send"></i> Enviar</button></div></form>':'')+
-      '</div>';
-  return `
-    <section class="section-heading compact"><div><span class="eyebrow">INBOX / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Conversaciones</h1><p>Lee, clasifica y responde desde LINK. ${rows.filter(x=>Number(x.unreadCount||0)>0).length} conversaciones tienen mensajes sin leer en este periodo.</p></div><span class="freshness">${safe(ago(snap.fetched_at))}</span></section>
-    <div class="conversation-layout interactive">
-      <div class="conversation-list">
-        ${rows.length?rows.map(x=>{const id=String(x.id||x._id);const st=conversationStatus(id,x);return '<button class="conversation-item '+(selectedId===id?'active':'')+'" data-conversation="'+safe(id)+'"><span class="conversation-avatar">'+(x.participantPicture?'<img src="'+safe(x.participantPicture)+'" alt="">':safe((x.participantName||x.participantUsername||'?')[0]?.toUpperCase()||'?'))+'</span><div><strong>'+safe(x.participantName||x.participantUsername||'Contacto')+'</strong><p>'+safe(conversationText(x))+'</p><span class="conversation-status '+st+'">'+statusLabelConversation(st)+(Number(x.unreadCount||0)>0?' · '+Number(x.unreadCount)+' nuevo':'')+'</span></div><small>'+safe(ago(conversationDate(x)))+'</small></button>'}).join(''):'<div class="list-empty">Sin conversaciones en este periodo.</div>'}
-      </div>
-      ${detail}
-    </div>`;
+  return comunEscuchaSection({state});
 }
-
 
 
 function dateKey(value){
@@ -1642,8 +1618,8 @@ function renderApp(){
       <main class="main">
         ${topbar()}
         ${sectionNav()}
-        ${state.section==='artifacts'?'':accountStrip()}
-        ${['connections','artifacts'].includes(state.section)?'':periodControls()}
+        ${['artifacts','inbox'].includes(state.section)?'':accountStrip()}
+        ${['connections','artifacts','inbox'].includes(state.section)?'':periodControls()}
         <div class="content">${bodySection()}</div>
       </main>
     </div>
@@ -1723,8 +1699,29 @@ function bind(){
   document.querySelectorAll('[data-analytics-tab]').forEach(btn=>btn.onclick=()=>{state.analyticsTab=btn.dataset.analyticsTab;renderApp();});
   document.querySelectorAll('[data-analytics-sort]').forEach(btn=>btn.onclick=()=>{state.analyticsSort=btn.dataset.analyticsSort;renderApp();});
   document.querySelectorAll('[data-conversation]').forEach(btn=>btn.onclick=()=>{
+    const accountId=btn.dataset.conversationAccount;
+    if(accountId){
+      const account=state.accounts.find(x=>x.id===accountId);
+      if(account) state.activeAccount=account;
+    }
     state.selectedConversationId=btn.dataset.conversation;
     renderApp();
+  });
+  document.querySelectorAll('[data-ce-state]').forEach(btn=>btn.onclick=()=>{state.conversationFilter=btn.dataset.ceState||'all';renderApp();});
+  $('#ce-channel')?.addEventListener('change',e=>{state.conversationChannel=e.target.value||'all';renderApp();});
+  $('#ce-search')?.addEventListener('input',e=>{
+    state.conversationQuery=e.target.value||'';
+    renderApp();
+    const input=$('#ce-search'); if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+  });
+  document.querySelectorAll('[data-ce-prompt]').forEach(btn=>btn.onclick=()=>{
+    const box=$('#ce-work-input'); if(box){box.value=btn.dataset.cePrompt||'';box.focus();}
+  });
+  $('#ce-copy-work')?.addEventListener('click',async()=>{
+    const box=$('#ce-work-input'); const value=box?.value?.trim();
+    if(!value){toast('Escribe o elige una instrucción primero.');return;}
+    try{await navigator.clipboard?.writeText(value);toast('Instrucción copiada.');}
+    catch{toast('No se pudo copiar la instrucción.',true);}
   });
   document.querySelectorAll('[data-suggest-reply]').forEach(btn=>btn.onclick=()=>{
     const box=$('#conversation-reply'); if(box){box.value=btn.dataset.suggestReply||'';box.focus();}
