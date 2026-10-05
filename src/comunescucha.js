@@ -158,32 +158,84 @@ function intelligenceMarkup(row){
   const products=Array.isArray(row.products)?row.products:[];
   const missing=Array.isArray(row.missing_data)?row.missing_data:[];
   const questions=Array.isArray(row.unresolved_questions)?row.unresolved_questions:[];
-  const extracted=row.extracted_data&&typeof row.extracted_data==='object'?Object.entries(row.extracted_data).slice(0,8):[];
+  const objections=Array.isArray(row.objections)?row.objections:[];
+  const extracted=row.extracted_data&&typeof row.extracted_data==='object'?Object.entries(row.extracted_data).slice(0,10):[];
   const apparatus=row.suggested_apparatus_name||row.next_apparatus_key||'Por decidir';
   const mode=row.suggested_apparatus_mode||'draft';
+  const who=row.person_name||row.participant_name||row.participant_username||'Contacto';
+  const wants=row.request_summary||row.intent_label||intentLabels[row.intent_key]||'Por interpretar';
+  const lastChange=row.last_message||'Sin cambio textual reciente registrado.';
+  const confidence=row.confidence!==null&&row.confidence!==undefined?Math.round(Number(row.confidence)*100):null;
+  const changedMeta=[
+    row.source_message_count?row.source_message_count+' mensajes en contexto':null,
+    row.last_activity_at?dateLabel(row.last_activity_at):null,
+    row.needs_refresh?'requiere nueva lectura':null
+  ].filter(Boolean).join(' · ');
+
+  const abstraction=[
+    {
+      key:'QUIÉN',
+      value:who,
+      body:(row.platform||'RRSS')+' · '+(row.business_name||'Negocio')+(row.language?' · '+row.language:''),
+      tone:'identity'
+    },
+    {
+      key:'QUÉ QUIERE',
+      value:row.intent_label||intentLabels[row.intent_key]||'Solicitud detectada',
+      body:wants,
+      chips:products,
+      tone:'intent'
+    },
+    {
+      key:'QUÉ SABEMOS',
+      value:extracted.length?extracted.length+' datos estructurados':'Aún sin datos estructurados',
+      evidence:extracted,
+      tone:'known'
+    },
+    {
+      key:'QUÉ CAMBIÓ',
+      value:lastChange,
+      body:changedMeta||'Último mensaje incorporado al estado de la conversación.',
+      tone:'changed'
+    },
+    {
+      key:'QUÉ ESTÁ EN DUDA',
+      value:(objections.length+questions.length)?(objections.length+questions.length)+' punto(s) abierto(s)':'Sin dudas detectadas',
+      chips:[...objections,...questions],
+      tone:'doubt'
+    },
+    {
+      key:'QUÉ FALTA',
+      value:missing.length?missing.length+' dato(s) para avanzar':'Nada crítico detectado',
+      chips:missing,
+      tone:'missing'
+    },
+    {
+      key:'QUÉ SIGUE',
+      value:row.next_action||'Elegir el siguiente paso',
+      body:'Destino sugerido: '+apparatus+' · '+(row.suggested_apparatus_kind||'resolución')+' · '+mode,
+      tone:'next'
+    }
+  ];
+
   return '<aside class="ce-intelligence">'+
-    '<div class="ce-side-title"><div><span class="eyebrow">COMUNESCUCHA</span><h2>Lo que entendió LINK</h2></div><span class="ce-analysis-state '+esc(row.analysis_state||'queued')+'">'+esc(row.analysis_state==='ready'?'Listo':row.analysis_state==='manual_review'?'Revisar':'Procesando')+'</span></div>'+
-    '<section class="ce-info-card">'+
-      '<span class="ce-info-label">CONTACTO</span>'+
-      '<div class="ce-contact-line"><span class="ce-avatar">'+esc((row.participant_name||row.participant_username||'?').slice(0,1).toUpperCase())+'</span><div><strong>'+esc(row.participant_name||row.participant_username||'Contacto')+'</strong><small>'+esc(row.platform||'RRSS')+' · '+esc(row.business_name||'Negocio')+'</small></div></div>'+
-    '</section>'+
-    '<section class="ce-info-card accent">'+
-      '<span class="ce-info-label">SOLICITUD DETECTADA</span>'+
-      '<strong class="ce-big">'+esc(row.intent_label||intentLabels[row.intent_key]||'Por interpretar')+'</strong>'+
-      '<p>'+esc(row.request_summary||row.last_message||'Aún sin resumen especializado.')+'</p>'+
-      '<div class="ce-chip-row">'+chips(products,'product')+'</div>'+
+    '<div class="ce-side-title"><div><span class="eyebrow">COMUNESCUCHA</span><h2>Abstracción operativa</h2><p>Del hilo humano al estado accionable.</p></div><span class="ce-analysis-state '+esc(row.analysis_state||'queued')+'">'+esc(row.analysis_state==='ready'?'Listo':row.analysis_state==='manual_review'?'Revisar':'Procesando')+'</span></div>'+
+    '<section class="ce-abstraction-protocol">'+
+      abstraction.map((item,index)=>'<article class="ce-abstraction-step '+esc(item.tone)+'">'+
+        '<div class="ce-step-index">'+(index+1)+'</div>'+
+        '<div class="ce-step-copy"><span class="ce-info-label">'+esc(item.key)+'</span><strong>'+esc(item.value)+'</strong>'+
+          (item.body?'<p>'+esc(item.body)+'</p>':'')+
+          (item.evidence?.length?'<div class="ce-chip-row evidence">'+item.evidence.map(([k,v])=>'<span class="ce-chip evidence">'+esc(k)+': '+esc(textOf(v))+'</span>').join('')+'</div>':'')+
+          (item.chips?.length?'<div class="ce-chip-row">'+chips(item.chips,item.tone==='missing'||item.tone==='doubt'?'missing':item.tone==='intent'?'product':'')+'</div>':'')+
+        '</div>'+
+      '</article>').join('')+
     '</section>'+
     '<section class="ce-info-grid">'+
       '<div><span class="ce-info-label">ESTADO</span><strong>'+esc(attentionLabels[row.attention_state]||'Seguimiento')+'</strong></div>'+
       '<div><span class="ce-info-label">PRIORIDAD</span><strong>'+esc(String(row.priority??50))+'/100</strong></div>'+
-      '<div><span class="ce-info-label">IDIOMA</span><strong>'+esc(row.language||'Detectar')+'</strong></div>'+
       '<div><span class="ce-info-label">ETAPA</span><strong>'+esc(row.commercial_stage||'unknown')+'</strong></div>'+
+      '<div><span class="ce-info-label">CONFIANZA</span><strong>'+(confidence===null?'—':esc(String(confidence))+'%')+'</strong></div>'+
     '</section>'+
-    '<section class="ce-info-card">'+
-      '<span class="ce-info-label">ENCONTRADO EN LA CONVERSACIÓN</span>'+
-      '<div class="ce-chip-row evidence">'+(extracted.length?extracted.map(([k,v])=>'<span class="ce-chip evidence">'+esc(k)+': '+esc(textOf(v))+'</span>').join(''):'<span class="ce-muted">Sin datos estructurados todavía.</span>')+'</div>'+
-    '</section>'+
-    ((missing.length||questions.length)?'<section class="ce-info-card warning"><span class="ce-info-label">PENDIENTE</span><div class="ce-chip-row">'+chips(missing,'missing')+chips(questions,'missing')+'</div></section>':'')+
     '<section class="ce-info-card specialist">'+
       '<span class="ce-info-label">ESPECIALISTA DEL NEGOCIO</span>'+
       '<strong class="ce-big">'+esc(row.specialist_name||'Sin asignar')+'</strong>'+
@@ -191,7 +243,7 @@ function intelligenceMarkup(row){
       '<div class="ce-specialist-meta"><span>Tono</span><b>'+esc(profile.tone||'definido por negocio')+'</b><span>Autonomía</span><b>'+esc(row.autonomy_policy?.outbound_message==='human_approval_required'?'Aprobación humana':'Configurable')+'</b></div>'+
     '</section>'+
     '<section class="ce-info-card apparatus">'+
-      '<span class="ce-info-label">APARATO SUGERIDO</span>'+
+      '<span class="ce-info-label">HANDOFF</span>'+
       '<div class="ce-apparatus-row"><span>↗</span><div><strong>'+esc(apparatus)+'</strong><small>'+esc(row.suggested_apparatus_kind||'resolución')+' · '+esc(mode)+'</small></div></div>'+
       '<p>'+esc(row.next_action||'Interpretar la solicitud y elegir el siguiente paso.')+'</p>'+
     '</section>'+
