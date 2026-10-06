@@ -2496,7 +2496,23 @@ if(bootKaraokeRoute()){
     $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir la autorización LINK.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
   });
 }else{
-  loadBase().catch(e=>{
-    $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><h1>No pudimos abrir LINK RRSS.</h1><p>${safe(e.message||String(e))}</p></section></main>`;
-  });
+  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const bootLinkRRSS=async()=>{
+    let lastError=null;
+    for(let attempt=1;attempt<=4;attempt++){
+      try{
+        if(attempt>1){
+          $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><span class="eyebrow">RECONECTANDO</span><h1>Volviendo a conectar LINK RRSS…</h1><p>Intento ${attempt} de 4 · Supabase está activo, reintentando la conexión.</p></section></main>`;
+          await sleep(700*attempt);
+        }
+        await loadBase();
+        return;
+      }catch(e){
+        lastError=e;
+      }
+    }
+    $('#app').innerHTML=`<main class="auth-shell"><section class="auth-card"><span class="eyebrow">CONEXIÓN INTERRUMPIDA</span><h1>No pudimos abrir LINK RRSS.</h1><p>${safe(lastError?.message||String(lastError||'Failed to fetch'))}</p><button id="retry-linkrrss" class="primary wide" type="button">Reintentar conexión</button><small style="display:block;margin-top:12px;color:#777">Tus datos siguen en LINK CONTROL CENTRAL. Esta pantalla no borra ni modifica conversaciones.</small></section></main>`;
+    $('#retry-linkrrss')?.addEventListener('click',()=>bootLinkRRSS());
+  };
+  bootLinkRRSS();
 }
