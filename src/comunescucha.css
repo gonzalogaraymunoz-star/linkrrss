@@ -14,22 +14,7 @@
   --ce-warn:#b8842f;
   --ce-danger:#b34a3b;
 }
-.content{max-width:1480px!important}
-.sidebar{
-  background:var(--ce-charcoal)!important;
-  border-right-color:#2f2f2b!important;
-  color:#fff!important;
-  box-shadow:10px 0 34px rgba(15,15,13,.08);
-}
-.sidebar .app-title strong{color:#fff!important}.sidebar .app-title small,.sidebar .side-label{color:#8f8f87!important}
-.sidebar .brand-mark.small{background:var(--ce-acid)!important;color:var(--ce-ink)!important;border-color:var(--ce-acid)!important;box-shadow:none!important}
-.sidebar .new-connection,.sidebar .side-footer button{color:#d9d9d2!important}.sidebar .new-connection:hover,.sidebar .side-footer button:hover{background:#242420!important}
-.sidebar .side-search{background:#20201d!important;border-color:#34342f!important}.sidebar .side-search input{color:#f4f4ef!important}.sidebar .side-search input::placeholder{color:#77776f!important}.sidebar .side-search svg{color:#8d8d85!important}
-.sidebar .business-item{color:#d9d9d2!important}.sidebar .business-item:hover{background:#242420!important}.sidebar .business-item.active{background:#2b2b27!important;color:#fff!important;box-shadow:inset 3px 0 0 var(--ce-acid)!important}
-.sidebar .business-avatar{background:#23231f!important;border-color:#3c3c36!important;color:#eee!important}.sidebar .business-item.active .business-avatar{background:var(--ce-acid)!important;color:var(--ce-ink)!important;border-color:var(--ce-acid)!important}
-.sidebar .business-copy small{color:#87877f!important}.sidebar .side-footer{border-top-color:#34342f!important}
-.topbar{background:rgba(250,249,243,.90)!important}
-.section-nav{background:var(--ce-bg)!important}
+/* La mesa ComunEscucha NO gobierna la navegación ni la identidad global del ecosistema. */
 .comunescucha-page{display:grid;gap:14px}
 .ce-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
 .ce-hero h1{font:600 clamp(34px,4vw,52px)/.98 'Space Grotesk','DM Sans',Inter,sans-serif;letter-spacing:-.055em;color:var(--ce-ink);margin:0 0 10px}
