@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connection.js';
 import './style.css';
+import './world-theme.css';
 import { operationSection, bindOperation } from './operation.js';
 import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
 import { bootKaraokeRoute } from './karaoke.js';
