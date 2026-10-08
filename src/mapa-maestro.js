@@ -17,7 +17,7 @@
     activity:['Memoria de las señales.','Un registro de lo que ocurrió, cambió y requiere atención.']
   };
   const sectionNames={home:'INICIO',artifacts:'ARTEFACTOS',inbox:'CONVERSACIONES',content:'CONTENIDO',studio:'ECOSISTEMA',operation:'OPERACIÓN',calendar:'CALENDARIO',analytics:'ANALÍTICAS',connections:'CONEXIONES',automations:'AUTOMATIZACIONES',activity:'ACTIVIDAD'};
-  const stageTargets={MAR:'inbox',VENTA:'inbox',CIERRE:'operation',BOARDING:'operation',OPERACIONES:'operation',POSTVENTA:'analytics'};
+  const stageTargets={MAR:'marketing',VENTA:'ventas',CIERRE:'cierre',BOARDING:'onboarding',OPERACIONES:'entrega',POSTVENTA:'postventa'};
   let pendingConversation = new URLSearchParams(location.search).get('conversation_id');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const svg = [
@@ -73,7 +73,8 @@
       const cell=map.querySelector('#mapa-cell');
       if(cell)cell.textContent=selected.toUpperCase().slice(0,12);
       map.querySelector('[data-mapa-inbox]')?.addEventListener('click',()=>nav.querySelector('[data-section="inbox"]')?.click());
-      const linkIdUrl=()=>{const u=new URL('https://link-world-9h0.pages.dev/');u.searchParams.set('dimension','personas');const business=new URLSearchParams(location.search).get('business');if(business)u.searchParams.set('business',business);location.assign(u.toString());};
+      const goToWorld=(dimension)=>{const u=new URL('https://link-world-9h0.pages.dev/');u.searchParams.set('dimension',dimension);const business=new URLSearchParams(location.search).get('business');if(business)u.searchParams.set('business',business);location.assign(u.toString());};
+      const linkIdUrl=()=>goToWorld('personas');
       const openMapAction=(name)=>{if(name==='linkid')return linkIdUrl();nav.querySelector('[data-section="inbox"]')?.click();};
       map.querySelectorAll('[data-map-action]').forEach(node=>{
         const go=()=>openMapAction(node.dataset.mapAction);
@@ -81,7 +82,7 @@
         node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
       });
       map.querySelectorAll('[data-stage]').forEach(btn=>{
-        const go=()=>nav.querySelector('[data-section="'+stageTargets[btn.dataset.stage]+'"]')?.click();
+        const go=()=>goToWorld(stageTargets[btn.dataset.stage]);
         btn.addEventListener('click',go);
         btn.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
       });
