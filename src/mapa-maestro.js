@@ -95,13 +95,8 @@
     const btn=Array.from(app.querySelectorAll('[data-conversation]')).find(x=>x.dataset.conversation===pendingConversation);
     if(btn){pendingConversation=null;btn.click();}
   }
-  let scheduled=false;
-  const schedule=()=>{
-    if(scheduled)return;
-    scheduled=true;
-    queueMicrotask(()=>{scheduled=false;decorate();});
-  };
-  const observer=new MutationObserver(schedule);
-  observer.observe(app,{childList:true,subtree:true});
+  // Se activa exactamente una vez por render real de la app.
+  // No observar el árbol completo: evita bucles, trabajo inútil y bloqueos al plegar mesas.
+  document.addEventListener('linkrrss:rendered',decorate);
   decorate();
 })();
