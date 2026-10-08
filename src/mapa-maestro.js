@@ -57,12 +57,12 @@
     heading.className='mapa-side-eyebrow';
     heading.textContent='LINK WORLD';
     if(top)top.prepend(heading);
-    const listLabel=sidebar.querySelector('.side-label');
     const label=document.createElement('div');
     label.className='mapa-side-label';
     label.textContent='MESAS / CAPACIDADES';
-    if(listLabel)sidebar.insertBefore(label,listLabel);
-    sidebar.insertBefore(nav,label);
+    const before=sidebar.querySelector('.new-connection') || sidebar.querySelector('.side-search') || sidebar.querySelector('.side-label');
+    sidebar.insertBefore(label,before);
+    sidebar.insertBefore(nav,before);
     nav.querySelectorAll('[data-section]').forEach((btn,i)=>{
       btn.dataset.mapNumber=String(i+1).padStart(2,'0');
       btn.title=btn.textContent.trim();
