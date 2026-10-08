@@ -9,6 +9,7 @@ import { bootKaraokeRoute } from './karaoke.js';
 import { loadStudio, studioSection, bindStudio } from './studio.js';
 import { comunEscuchaSection } from './comunescucha.js';
 import './comunescucha.css';
+import './mapa-shell.css';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -684,23 +685,20 @@ function sidebar(){
   return `
     <aside class="sidebar">
       <div class="side-top">
-        <div class="app-title"><span class="brand-mark small">L</span><div><strong>LINK RRSS</strong><small>aparato social</small></div></div>
+        <div class="app-title"><div><span class="mapa-brand-eyebrow">LINK WORLD</span><strong>LINK<span class="mapa-brand-dot">·</span></strong><small>RRSS / COMUNICACIONES</small></div></div>
         <div class="side-top-actions">
           <button class="sidebar-collapse-btn" id="sidebar-collapse" type="button" title="Contraer o expandir menú" aria-label="Contraer o expandir menú"><span>‹</span></button>
           <button class="icon-btn" id="close-mobile">×</button>
         </div>
       </div>
+      <div class="mapa-side-label">MESAS / CAPACIDADES</div>
+      ${sectionNav()}
       ${state.canManage?'<button class="new-connection" id="quick-connect"><span>＋</span>Nueva conexión</button>':'<button class="new-connection" id="admin-access"><span>⌁</span>Administrar</button>'}
-      <div class="side-search"><i data-lucide="search"></i><input id="business-search" placeholder="Buscar negocio" value="${safe(state.search)}"></div>
-      <div class="side-label">NEGOCIOS</div>
-      <nav class="business-list">
-        ${visible.map(b=>{const st=statusForBusiness(b.id),gs=gameStateForBusiness(b.id);return `
-          <button class="business-item ${state.business?.id===b.id?'active':''} game-${safe(gs?.game_state||'none')}" data-business="${b.id}">
-            <span class="business-avatar">${safe(b.name.slice(0,1).toUpperCase())}</span>
-            <span class="business-copy"><strong>${safe(b.name)}</strong><small>${st.account_count||0} cuentas · ${safe(statusLabel(st.rrss_status))}${gs?' · '+Math.round(Number(gs.temperature||0))+'°':''}</small></span>
-            <span class="status-dot ${statusDot(st.rrss_status)}"></span>
-          </button>`}).join('')}
-      </nav>
+      <div class="mapa-sidebar-context">
+        <span>CÉLULA ACTIVA</span>
+        <strong>${safe(state.business?.name||'LINK WORLD')}</strong>
+        <small>Elige otra célula en la cabecera.</small>
+      </div>
       <div class="side-footer">
         <button id="back-world"><i data-lucide="arrow-left"></i><span>Volver a LINK WORLD GAME</span></button>
         ${state.canManage?'<button id="logout"><span class="user-dot"></span><span>Sesión LINK</span><small>Salir</small></button>':'<button id="admin-login"><span class="user-dot public"></span><span>Vista abierta</span><small>Administrar</small></button>'}
@@ -715,6 +713,12 @@ function topbar(){
     <header class="topbar">
       <button class="mobile-menu" id="mobile-menu">☰</button>
       <div class="crumb"><span>LINK WORLD</span><b>/</b><strong>${safe(state.business?.name||'RRSS')}</strong></div>
+      <div class="mapa-business-picker">
+        <label for="business-select">CÉLULA ACTIVA</label>
+        <select id="business-select" aria-label="Elegir negocio de LINK RRSS">
+          ${state.businesses.map(b=>`<option value="${safe(b.id)}" ${state.business?.id===b.id?'selected':''}>${safe(b.name)}</option>`).join('')}
+        </select>
+      </div>
       <div class="top-actions">
         ${state.canManage?'<span class="sync-memory '+(state.syncing?'syncing':'')+'"><b>'+safe(syncStateLabel())+'</b><small>'+safe(ago(state.workspace?.last_full_sync_at))+'</small></span>':''}
         ${gs?'<span class="game-heat-pill '+gameStateTone(gs)+'"><strong>'+Math.round(Number(gs.temperature||0))+'°</strong><span>'+safe(gs.game_state_label)+'</span><small>'+Math.round(Number(gs.conversion_percent||0))+'%</small></span>':''}
@@ -727,7 +731,7 @@ function topbar(){
 
 function sectionNav(){
   return `<nav class="section-nav">${nav.map(([id,label])=>`
-    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',artifacts:'workflow',inbox:'message-circle',content:'file-text',calendar:'calendar-days',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
+    <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',artifacts:'workflow',inbox:'message-circle',content:'file-text',calendar:'calendar-days',studio:'music-2',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
 function accountStrip(){
@@ -1647,7 +1651,6 @@ function renderApp(){
       <div class="mobile-scrim" id="mobile-scrim"></div>
       <main class="main">
         ${topbar()}
-        ${sectionNav()}
         ${['artifacts','inbox'].includes(state.section)?'':accountStrip()}
         ${['connections','artifacts','inbox'].includes(state.section)?'':periodControls()}
         <div class="content">${bodySection()}</div>
@@ -1666,6 +1669,15 @@ function bind(){
     state.business=state.businesses.find(x=>x.id===btn.dataset.business);
     state.activeAccount=null;
     await loadBusiness({restore:true});
+  });
+  $('#business-select')?.addEventListener('change',async e=>{
+    const next=state.businesses.find(b=>b.id===e.target.value);
+    if(!next || next.id===state.business?.id)return;
+    state.business=next;
+    state.activeAccount=null;
+    state.selectedConversationId=null;
+    await loadBusiness({restore:true});
+    syncUrl();
   });
   document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{
     state.section=btn.dataset.section;
