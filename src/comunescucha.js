@@ -311,16 +311,21 @@ export function comunEscuchaSection({state}){
     '</div>'+
     deepSearchMarkup(state)+
     '<div class="ce-tabbar">'+tabs.map(([key,label,count])=>'<button data-ce-state="'+esc(key)+'" class="'+((state.conversationFilter||'all')===key?'active':'')+'"><span>'+esc(label)+'</span><b>'+count+'</b></button>').join('')+'</div>'+
+    '<div class="ce-panel-togglebar" role="group" aria-label="Distribución de ComunEscucha">'+
+      '<button type="button" data-ce-fold="list" aria-controls="ce-conversation-list" aria-pressed="false">☷ Conversaciones</button>'+
+      '<button type="button" data-ce-fold="intelligence" aria-controls="ce-intelligence-panel" aria-pressed="false">◈ Inteligencia</button>'+
+      '<button type="button" data-ce-fold="focus" aria-pressed="false">⛶ Vista libre</button>'+
+    '</div>'+
     '<div class="comunescucha-shell">'+
-      '<aside class="ce-list">'+
+      '<aside class="ce-list" id="ce-conversation-list">'+
         '<div class="ce-list-head"><div><strong>'+rows.length+' conversaciones</strong><small>ordenadas por atención y actividad</small></div><span>'+stats.reply+' por responder</span></div>'+
         '<div class="ce-list-scroll">'+(rows.length?rows.map(r=>conversationCard(r,selected?.conversation_id===r.conversation_id)).join(''):'<div class="ce-list-empty">No hay conversaciones con estos filtros.</div>')+'</div>'+
       '</aside>'+
       '<div class="ce-resizer left" data-ce-resizer="left" role="separator" aria-label="Ajustar ancho de lista" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       threadMarkup(state,selected)+
       '<div class="ce-resizer right" data-ce-resizer="right" role="separator" aria-label="Ajustar ancho de inteligencia" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
-      intelligenceMarkup(selected)+
+      intelligenceMarkup(selected).replace('class="ce-intelligence','id="ce-intelligence-panel" class="ce-intelligence')+
     '</div>'+
-    '<footer class="ce-flow"><span><b>1</b>Mensaje</span><i>→</i><span><b>2</b>ComunEscucha</span><i>→</i><span><b>3</b>Especialista</span><i>→</i><span><b>4</b>Aparato</span><i>→</i><span><b>5</b>Respuesta</span><i>→</i><span><b>6</b>Feedback</span></footer>'+
+    '<footer class="ce-flow"><span><b>1</b>LINK RRSS</span><i>→</i><span><b>2</b>LINK ID</span><i>→</i><span><b>3</b>MAR</span><i>→</i><span><b>4</b>Ciclo</span><i>→</i><span><b>5</b>Resolución</span><i>→</i><span><b>6</b>Evidencia</span></footer>'+
   '</section>';
 }
