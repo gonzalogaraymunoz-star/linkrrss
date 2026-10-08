@@ -16,7 +16,8 @@
     automations:['Movimiento programado.','Procesos de comunicación y seguimiento de LINK RRSS.'],
     activity:['Memoria de las señales.','Un registro de lo que ocurrió, cambió y requiere atención.']
   };
-  const stageTargets={MAR:'inbox',VENTA:'inbox',CIERRE:'operation',BOARDING:'operation',OPERAR:'operation',POSTVENTA:'analytics'};
+  const sectionNames={home:'INICIO',artifacts:'ARTEFACTOS',inbox:'CONVERSACIONES',content:'CONTENIDO',studio:'ECOSISTEMA',operation:'OPERACIÓN',calendar:'CALENDARIO',analytics:'ANALÍTICAS',connections:'CONEXIONES',automations:'AUTOMATIZACIONES',activity:'ACTIVIDAD'};
+  const stageTargets={MAR:'inbox',VENTA:'inbox',CIERRE:'operation',BOARDING:'operation',OPERACIONES:'operation',POSTVENTA:'analytics'};
   let pendingConversation = new URLSearchParams(location.search).get('conversation_id');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const svg = [
@@ -31,7 +32,7 @@
     '<circle cx="277" cy="225" r="18" fill="#fff" stroke="#d5ded7"/><text class="micro" x="277" y="229" text-anchor="middle">WA</text>',
     '<circle cx="542" cy="160" r="134" fill="none" stroke="#efede6"/><circle cx="542" cy="160" r="101" fill="none" stroke="#f2d6c4"/>',
     '<path class="stroke" stroke="#e6ae88" d="M542 59 A101 101 0 0 1 629 110"/><path class="stroke" stroke="#e6ae88" d="M643 160 A101 101 0 0 1 590 249"/><path class="stroke" stroke="#e6ae88" d="M492 249 A101 101 0 0 1 441 160"/><path class="stroke" stroke="#e6ae88" d="M455 110 A101 101 0 0 1 542 59"/>',
-    ...[['MAR',542,59],['VENTA',629,109],['CIERRE',629,211],['BOARDING',542,261],['OPERAR',455,211],['POSTVENTA',455,109]].map(([t,x,y])=>'<g class="stage" data-stage="'+t+'" tabindex="0" role="button" aria-label="Abrir etapa '+t+'"><circle cx="'+x+'" cy="'+y+'" r="28" fill="#fff9f4" stroke="#edc6a9"/><text class="micro" x="'+x+'" y="'+(y+3)+'" text-anchor="middle" style="font-size:'+(t.length>6?8:10)+'px">'+t+'</text></g>'),
+    ...[['MAR',542,59],['VENTA',629,109],['CIERRE',629,211],['BOARDING',542,261],['OPERACIONES',455,211],['POSTVENTA',455,109]].map(([t,x,y])=>'<g class="stage" data-stage="'+t+'" tabindex="0" role="button" aria-label="Abrir etapa '+t+'"><circle cx="'+x+'" cy="'+y+'" r="28" fill="#fff9f4" stroke="#edc6a9"/><text class="micro" x="'+x+'" y="'+(y+3)+'" text-anchor="middle" style="font-size:'+(t.length>6?8:10)+'px">'+t+'</text></g>'),
     '<circle cx="542" cy="160" r="65" fill="#fbfcfa" stroke="#e0e7e0"/><text class="node" x="542" y="148" text-anchor="middle" style="letter-spacing:2px">CONCHA</text><text class="micro" x="542" y="170" text-anchor="middle">6 ETAPAS</text><text class="micro" x="542" y="186" text-anchor="middle">1 ECOSISTEMA</text>',
     '<path class="stroke" stroke="#b9d4e2" d="M655 139 C728 136 720 84 823 84"/><path class="stroke" stroke="#b9d4e2" d="M655 182 C724 184 730 236 823 236"/>',
     '<circle cx="831" cy="84" r="26" fill="#f3f9fc" stroke="#b2d5e6"/><text class="micro" x="831" y="88" text-anchor="middle">RRSS</text>',
@@ -62,7 +63,7 @@
     const selected=shell.querySelector('.business-item.active .business-copy strong')?.textContent?.trim() || shell.querySelector('.crumb strong')?.textContent?.trim() || 'LINK';
     const head=document.createElement('header');
     head.className='mapa-page-heading';
-    head.innerHTML='<div><div class="mapa-ol">LINK WORLD / DIMENSIÓN RRSS / '+esc(section.toUpperCase())+'</div><h1>'+esc((labels[section]||labels.home)[0])+'</h1><p>'+esc((labels[section]||labels.home)[1])+'</p></div><div class="mapa-folio">LINK RRSS<br>MAPA MAESTRO / '+esc(selected.toUpperCase())+'<br>ECOSISTEMA EN MOVIMIENTO</div>';
+    head.innerHTML='<div><div class="mapa-ol">LINK WORLD / DIMENSIÓN RRSS / '+esc(sectionNames[section]||section.toUpperCase())+'</div><h1>'+esc((labels[section]||labels.home)[0])+'</h1><p>'+esc((labels[section]||labels.home)[1])+'</p></div><div class="mapa-folio">LINK RRSS<br>MAPA MAESTRO / '+esc(selected.toUpperCase())+'<br>ECOSISTEMA EN MOVIMIENTO</div>';
     content.prepend(head);
     if(section==='home'){
       const map=document.createElement('section');
