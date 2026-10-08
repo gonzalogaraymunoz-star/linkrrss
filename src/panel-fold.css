@@ -1,0 +1,76 @@
+/* LINK WORLD · vista libre y paneles reversibles. */
+.app-shell .map-focus-btn{
+  display:inline-grid!important;place-items:center!important;flex:0 0 34px!important;
+  width:34px!important;height:34px!important;border:1px solid #dce8de!important;
+  border-radius:10px!important;background:#fff!important;color:#497260!important;
+  font-size:20px!important;line-height:1!important;padding:0!important;
+}
+.app-shell .map-focus-btn:hover{background:#ecf4ee!important;border-color:#a8cbb2!important}
+.app-shell .map-focus-btn[aria-pressed="true"]{background:#e4f1ea!important;border-color:#91bca3!important;color:#316e4b!important}
+body.link-focus-mode .app-shell,
+body.link-focus-mode.sidebar-collapsed .app-shell{grid-template-columns:minmax(0,1fr)!important}
+body.link-focus-mode .app-shell>.sidebar{display:none!important}
+body.link-focus-mode .app-shell>.mobile-scrim{display:none!important}
+body.link-focus-mode .app-shell>.main{width:100%;min-width:0}
+body.link-focus-mode .app-shell .content{max-width:1780px!important;width:100%;padding-left:clamp(18px,3vw,54px)!important;padding-right:clamp(18px,3vw,54px)!important}
+body.link-focus-mode .app-shell .topbar{z-index:60!important}
+body.link-focus-mode .app-shell .mapa-map svg{max-height:430px}
+.ce-panel-togglebar{
+  display:flex;justify-content:flex-end;align-items:center;gap:8px;
+  flex-wrap:wrap;margin:0;padding:2px 0 3px;
+}
+.ce-panel-togglebar button{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  border:1px solid #dce7df;border-radius:9px;background:#fffefc;
+  color:#587464;white-space:nowrap;font-size:10px;font-weight:520;
+  min-height:36px;padding:8px 12px;cursor:pointer;
+}
+.ce-panel-togglebar button:hover{background:#edf5ef;border-color:#bcd5c4}
+.ce-panel-togglebar button[aria-pressed="true"]{
+  background:#eaf4f8;border-color:#b7d9e6;color:#357b99;
+}
+.comunescucha-shell.ce-fold-list>.ce-list,
+.comunescucha-shell.ce-fold-list>.ce-resizer.left,
+.comunescucha-shell.ce-fold-intelligence>.ce-intelligence,
+.comunescucha-shell.ce-fold-intelligence>.ce-resizer.right{display:none!important}
+@media(min-width:1181px){
+  .comunescucha-shell.ce-fold-list{
+    grid-template-columns:minmax(0,1fr) 7px var(--ce-right-width)!important;
+  }
+  .comunescucha-shell.ce-fold-intelligence{
+    grid-template-columns:var(--ce-left-width) 7px minmax(0,1fr)!important;
+  }
+  .comunescucha-shell.ce-fold-list.ce-fold-intelligence{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+}
+@media(max-width:1180px){
+  .comunescucha-shell.ce-fold-list,
+  .comunescucha-shell.ce-fold-list.ce-fold-intelligence{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .comunescucha-shell.ce-fold-intelligence:not(.ce-fold-list){
+    grid-template-columns:minmax(210px,31%) minmax(0,1fr)!important;
+  }
+  .comunescucha-shell.ce-fold-list>.ce-intelligence{grid-column:1!important}
+}
+@media(max-width:760px){
+  .ce-panel-togglebar{justify-content:flex-start;gap:5px}
+  .ce-panel-togglebar button{flex:1 1 auto;min-height:38px;padding:8px;font-size:9px}
+  .comunescucha-shell.ce-fold-intelligence:not(.ce-fold-list),
+  .comunescucha-shell.ce-fold-list,
+  .comunescucha-shell.ce-fold-list.ce-fold-intelligence{grid-template-columns:minmax(0,1fr)!important}
+  body.link-focus-mode .app-shell .content{padding-left:12px!important;padding-right:12px!important}
+}
+.mapa-map svg .map-node{cursor:pointer;outline:none}
+.mapa-map svg .map-node:hover circle:first-child,
+.mapa-map svg .map-node:focus circle:first-child{
+  stroke-width:2.5!important;stroke:#6897aa!important;
+}
+.mapa-map svg .map-node:focus-visible{outline:none}
+.mapa-map svg .map-node text{pointer-events:none}
+.mapa-map .map-node .micro{letter-spacing:.65px}
+.mapa-map .map-node[role="button"]:active circle:first-child{fill:#edf7f9!important}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .map-focus-btn,.ce-panel-togglebar button{transition:none!important}
+}
