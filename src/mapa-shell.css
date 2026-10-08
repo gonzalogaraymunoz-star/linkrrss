@@ -1,0 +1,272 @@
+/* LINK RRSS — MAPA MAESTRO / final UX skin.
+   Imported after ComunEscucha: shared chrome is owned by the app, never by a module.
+   All data, routes and permissions remain owned by main.js and Supabase. */
+:root{
+  color-scheme:light;
+  --side:#fcfcfa;--ink:#26342d;--muted:#819087;
+  --line:#e2e8e2;--paper:#f8f8f5;--soft:#f7faf7;
+  --link-acid:#6695ad;--link-acid-soft:#ebf5f9;--ce-acid:#79a1b5;--ce-acid-soft:#ecf6fa;
+  --link-cream:#f8f8f5;--link-cream-2:#fcfcfa;--link-paper:#fffefc;
+  --link-black:#26342d;--link-charcoal:#26342d;--link-line:#e2e8e2;
+  --link-stone:#7a867e;--link-stone-2:#9ea99f;
+  --sidebar-open-width:254px;--sidebar-closed-width:78px;
+}
+body,html{background:var(--paper)!important;color:var(--ink)!important}
+.app-shell{background:var(--paper)!important;grid-template-columns:var(--sidebar-open-width) minmax(0,1fr)!important}
+.app-shell>.sidebar{
+  position:sticky!important;left:auto!important;top:0!important;height:100dvh!important;
+  min-width:0!important;width:auto!important;min-height:0;
+  background:#fcfcfa!important;color:#26342d!important;
+  border-right:1px solid #e0e7df!important;
+  box-shadow:none!important;
+  padding:24px 16px 16px!important;
+  display:flex!important;flex-direction:column!important;gap:10px!important;
+  overflow:hidden!important;
+}
+.app-shell>.sidebar .side-top{
+  position:relative;display:flex!important;justify-content:space-between!important;
+  align-items:flex-start!important;flex:0 0 auto;
+  border-bottom:1px solid #e1e7e0!important;
+  padding:0 0 18px!important;margin:0 0 7px!important;min-height:100px!important;
+}
+.app-shell>.sidebar .app-title{
+  gap:0!important;min-width:0;display:block!important;
+}
+.app-shell>.sidebar .app-title>div{display:block!important;min-width:0}
+.app-shell>.sidebar .app-title .mapa-brand-eyebrow{
+  display:block!important;font-size:8px!important;letter-spacing:.33em!important;
+  color:#8a9a90!important;margin:0 0 10px 2px;
+}
+.app-shell>.sidebar .app-title strong{
+  display:block!important;color:#18251f!important;
+  font-size:38px!important;font-weight:300!important;letter-spacing:.19em!important;line-height:1.04!important;
+  white-space:nowrap;
+}
+.app-shell>.sidebar .app-title .mapa-brand-dot{color:#6c8f78;letter-spacing:0}
+.app-shell>.sidebar .app-title small{
+  display:block!important;color:#8b9b90!important;font-size:9px!important;
+  letter-spacing:.18em!important;margin-top:14px!important;font-weight:450!important;
+}
+.app-shell>.sidebar .brand-mark{display:none!important}
+.app-shell>.sidebar .side-top-actions{
+  position:static!important;margin:0!important;display:flex!important;
+  gap:4px!important;flex:0 0 auto!important;align-items:start!important;
+}
+.app-shell>.sidebar #sidebar-collapse{
+  width:31px!important;height:31px!important;
+  border-radius:9px!important;border:1px solid #dbe5dc!important;
+  color:#587265!important;background:#fff!important;
+  padding:0!important;display:grid!important;place-items:center!important;
+  transform:none!important;position:static!important;
+}
+.app-shell>.sidebar #sidebar-collapse:hover{background:#ecf3ed!important;border-color:#bbd1c1!important}
+.app-shell>.sidebar #sidebar-collapse>span{font-size:21px;transform:translateY(-1px)}
+.app-shell>.sidebar .mapa-side-label{
+  flex:0 0 auto;font-size:9px!important;letter-spacing:.22em!important;
+  color:#8e9d91!important;padding:7px 8px!important;margin:0!important;font-weight:500!important;
+}
+.app-shell>.sidebar .section-nav{
+  flex:1 1 auto!important;min-height:0!important;height:auto!important;
+  overflow-y:auto!important;overflow-x:hidden!important;scrollbar-width:thin;
+  display:flex!important;flex-direction:column!important;align-items:stretch!important;
+  gap:3px!important;
+  padding:4px 2px 8px!important;margin:0!important;
+  background:transparent!important;border:0!important;
+}
+.app-shell>.sidebar .section-nav button{
+  flex:0 0 auto!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;
+  min-height:37px!important;width:100%!important;
+  font:500 11px/1.25 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif!important;
+  text-transform:none!important;letter-spacing:0!important;
+  color:#607168!important;background:transparent!important;
+  border:1px solid transparent!important;border-radius:10px!important;
+  padding:8px 10px!important;margin:0!important;gap:10px!important;
+  box-shadow:none!important;text-align:left!important;white-space:nowrap;
+}
+.app-shell>.sidebar .section-nav button::before{
+  content:attr(data-map-number);display:inline-block!important;
+  font-size:9px!important;letter-spacing:.09em!important;min-width:17px!important;
+  color:#a3b0a6!important;font-weight:500!important;
+}
+.app-shell>.sidebar .section-nav button svg{width:15px!important;height:15px!important;stroke-width:1.7!important;flex:none}
+.app-shell>.sidebar .section-nav button span{display:inline!important}
+.app-shell>.sidebar .section-nav button:hover{
+  color:#315b4b!important;background:#edf4ef!important;border-color:#e0eae1!important;
+}
+.app-shell>.sidebar .section-nav button.active{
+  background:#eaf4f8!important;color:#317a9d!important;border-color:#d6e6ee!important;
+  box-shadow:none!important;
+}
+.app-shell>.sidebar .section-nav button.active::before{color:#387da0!important}
+.app-shell>.sidebar .new-connection{
+  display:flex!important;align-items:center!important;flex:0 0 auto;gap:8px!important;
+  border:1px solid #d9e6dc!important;border-radius:11px!important;
+  background:#f0f6f0!important;color:#3c6753!important;
+  padding:10px 12px!important;font-size:10px!important;min-height:36px!important;
+  margin:0!important;white-space:nowrap;
+}
+.app-shell>.sidebar .new-connection:hover{background:#e4f1e8!important}
+.app-shell>.sidebar .mapa-sidebar-context{
+  flex:0 0 auto;padding:13px 9px 11px;margin-top:2px;
+  border-top:1px solid #e4eae3;display:grid;gap:5px;min-height:74px;
+}
+.app-shell>.sidebar .mapa-sidebar-context span{
+  font-size:8px;letter-spacing:.22em;color:#899a8d;
+}
+.app-shell>.sidebar .mapa-sidebar-context strong{
+  font-size:12px;color:#344d3c;font-weight:520;line-height:1.25;
+}
+.app-shell>.sidebar .mapa-sidebar-context small{font-size:9px;color:#9ba69c}
+.app-shell>.sidebar .side-footer{
+  flex:0 0 auto!important;border-top:1px solid #e1e7df!important;
+  padding:8px 0 0!important;margin:0!important;gap:2px!important;
+}
+.app-shell>.sidebar .side-footer button{
+  min-height:33px!important;color:#617469!important;font-size:10px!important;
+  padding:8px!important;background:transparent!important;border:0!important;
+  text-align:left!important;white-space:nowrap;
+}
+.app-shell>.sidebar .side-footer button:hover{background:#edf4ed!important}
+.app-shell>.sidebar .side-footer button svg{color:#6d947d!important}
+.app-shell>.sidebar .user-dot{background:#5d8c72!important}
+.app-shell>.main{min-width:0!important;background:#f8f8f5!important}
+.app-shell .topbar{
+  display:flex!important;justify-content:space-between!important;
+  align-items:center!important;gap:15px!important;
+  padding:0 26px!important;background:rgba(252,252,249,.97)!important;
+  border-bottom:1px solid #e0e6df!important;min-height:66px!important;height:auto!important;
+  position:sticky!important;top:0!important;z-index:20!important;
+}
+.app-shell .topbar .crumb{
+  min-width:0;white-space:nowrap;color:#829289!important;font-size:10px!important;letter-spacing:.12em!important;
+}
+.app-shell .topbar .crumb strong{max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.app-shell .topbar .top-actions{
+  margin-left:auto!important;min-width:0;gap:8px!important;flex-wrap:nowrap;
+}
+.app-shell .mapa-business-picker{
+  min-width:180px;max-width:270px;display:flex;align-items:center;gap:9px;margin-left:20px;
+  padding:3px 0;
+}
+.app-shell .mapa-business-picker label{
+  flex:0 0 auto;font-size:8px!important;color:#98a69b!important;letter-spacing:.17em!important;
+}
+.app-shell .mapa-business-picker select{
+  flex:1 1 150px!important;max-width:200px;min-width:110px;
+  appearance:auto;border:1px solid #dbe7dc!important;color:#355443!important;
+  background:#fff!important;outline:none;border-radius:999px!important;
+  font-size:11px!important;font-weight:500!important;
+  height:36px!important;padding:0 10px!important;cursor:pointer;
+}
+.app-shell .mapa-business-picker select:focus-visible{outline:2px solid #5b9abb!important}
+.app-shell .main>.section-nav{display:none!important} /* Never render a second menu */
+.app-shell .content{max-width:1550px!important;width:100%;margin:auto;padding:24px clamp(20px,3vw,48px) 90px!important}
+.app-shell .mapa-page-heading{margin:8px 0 25px!important}
+.app-shell .account-strip{padding:9px 26px!important}
+.app-shell .period-bar{background:#f8f8f5!important;border-color:#e1e7df!important}
+.app-shell .period-bar button{border-radius:999px!important}
+.app-shell .period-bar button.active,.app-shell .period-bar button.selected{
+  background:#eaf4f8!important;border-color:#bcd7e3!important;color:#3b708c!important;box-shadow:none!important;
+}
+.app-shell .health-pill{box-shadow:none!important}
+.app-shell .mapa-map{box-shadow:0 6px 22px rgba(26,48,34,.02)!important}
+.app-shell .mapa-page-heading h1{font-weight:390!important}
+.app-shell .section-heading h1{font-weight:390!important}
+.app-shell .panel,.app-shell .source-card,.app-shell .post-card,.app-shell .automation-card{
+  box-shadow:none!important;border-color:#e0e7df!important;
+}
+.app-shell .primary,.app-shell .section-heading .primary,.app-shell .btn-primary{
+  background:#437f9c!important;border-color:#437f9c!important;color:white!important;
+  box-shadow:none!important;text-shadow:none!important;
+}
+.app-shell .primary:hover,.app-shell .section-heading .primary:hover,.app-shell .btn-primary:hover{background:#316e8b!important}
+.app-shell .ce-hero,.app-shell .comunescucha-page{color:#26382d}
+.app-shell .ce-tabbar button.active{
+  background:#eaf4f8!important;border-color:#b4d5e4!important;color:#305f77!important;
+  box-shadow:none!important;
+}
+.app-shell .ce-tabbar button.active b{background:#c2e1ef!important;color:#275973!important}
+.app-shell .ce-business-pill{
+  background:#eaf4ef!important;border:1px solid #cde2d2!important;
+  box-shadow:none!important;color:#39654d!important;
+}
+.app-shell .ce-pulse>span{
+  background:#7fa68c!important;box-shadow:0 0 0 4px rgba(126,163,142,.12)!important;
+}
+.app-shell .ce-live-sync button{
+  background:#477f99!important;color:white!important;border-color:#477f99!important;
+}
+.app-shell .ce-conversation-card.active{box-shadow:inset 3px 0 0 #6095ad!important}
+.app-shell .ce-resizer{background:#ecf0eb;border-color:#dfe8e0}
+.app-shell .ce-toolbar,.app-shell .ce-deep-search-panel{color:#26372d}
+.app-shell .ce-workbench{background:#fbfdfa!important}
+.app-shell .ce-workbench button{border-radius:9px}
+.app-shell .ce-translate-dimension{background:#fbfcfa}
+.app-shell button:focus-visible,.app-shell a:focus-visible,.app-shell select:focus-visible{
+  outline:2px solid #6ba8c7!important;outline-offset:2px!important;
+}
+
+/* Collapsed rail is the same interface, never a second application. */
+body.sidebar-collapsed .app-shell{grid-template-columns:var(--sidebar-closed-width) minmax(0,1fr)!important}
+body.sidebar-collapsed .app-shell>.sidebar{padding:19px 8px!important;gap:6px!important}
+body.sidebar-collapsed .app-shell>.sidebar .side-top{min-height:42px!important;justify-content:center!important;padding:0 0 10px!important}
+body.sidebar-collapsed .app-shell>.sidebar .app-title,
+body.sidebar-collapsed .app-shell>.sidebar .mapa-side-label,
+body.sidebar-collapsed .app-shell>.sidebar .mapa-sidebar-context,
+body.sidebar-collapsed .app-shell>.sidebar .new-connection{display:none!important}
+body.sidebar-collapsed .app-shell>.sidebar .side-top-actions{position:static!important}
+body.sidebar-collapsed .app-shell>.sidebar #sidebar-collapse{transform:rotate(180deg)!important}
+body.sidebar-collapsed .app-shell>.sidebar .section-nav{gap:6px!important;padding:5px!important}
+body.sidebar-collapsed .app-shell>.sidebar .section-nav button{
+  padding:10px 0!important;justify-content:center!important;min-height:43px!important;
+}
+body.sidebar-collapsed .app-shell>.sidebar .section-nav button::before,
+body.sidebar-collapsed .app-shell>.sidebar .section-nav button span{display:none!important}
+body.sidebar-collapsed .app-shell>.sidebar .section-nav button svg{width:19px!important;height:19px!important}
+body.sidebar-collapsed .app-shell>.sidebar .side-footer span,
+body.sidebar-collapsed .app-shell>.sidebar .side-footer small{display:none!important}
+body.sidebar-collapsed .app-shell>.sidebar .side-footer{justify-items:center!important}
+body.sidebar-collapsed .app-shell>.sidebar .side-footer button{padding:8px!important;display:flex;justify-content:center}
+body.sidebar-collapsed .app-shell>.sidebar .side-footer .user-dot{display:inline-block!important}
+
+@media(max-width:1160px){
+  .app-shell .topbar .sync-memory{display:none!important}
+  .app-shell .topbar .mapa-business-picker{margin-left:3px!important}
+  .app-shell .topbar .game-heat-pill{display:none!important}
+}
+@media(max-width:830px){
+  .app-shell .topbar .crumb{display:none}
+  .app-shell .topbar{padding:9px 14px!important;gap:9px!important}
+  .app-shell .mapa-business-picker{margin-left:0!important}
+}
+@media(max-width:760px){
+  .app-shell,body.sidebar-collapsed .app-shell{grid-template-columns:minmax(0,1fr)!important}
+  .app-shell>.sidebar{
+    position:fixed!important;top:0!important;bottom:0!important;left:-285px!important;
+    height:100dvh!important;width:254px!important;z-index:50!important;
+    transition:left .2s ease!important;box-shadow:12px 0 40px rgba(30,45,35,.1)!important;
+  }
+  body.side-open .app-shell>.sidebar{left:0!important}
+  .app-shell .topbar .mobile-menu{display:inline-flex!important}
+  .app-shell .topbar .mapa-business-picker{min-width:0!important;flex:1 1 auto!important;max-width:260px!important}
+  .app-shell .mapa-business-picker label{display:none!important}
+  .app-shell .mapa-business-picker select{max-width:210px!important}
+  .app-shell .topbar .health-pill{display:none!important}
+  .app-shell .topbar .top-actions{margin-left:0!important}
+  .app-shell .content{padding:19px 14px 78px!important}
+  .app-shell .account-strip{padding:9px 14px!important}
+  .app-shell .mapa-page-heading{padding-bottom:15px}
+  body.sidebar-collapsed .app-shell>.sidebar{padding:24px 16px 16px!important}
+  body.sidebar-collapsed .app-shell>.sidebar .app-title,
+  body.sidebar-collapsed .app-shell>.sidebar .new-connection,
+  body.sidebar-collapsed .app-shell>.sidebar .mapa-side-label,
+  body.sidebar-collapsed .app-shell>.sidebar .mapa-sidebar-context{display:block!important}
+  body.sidebar-collapsed .app-shell>.sidebar .section-nav button{justify-content:flex-start!important;padding:8px 10px!important}
+  body.sidebar-collapsed .app-shell>.sidebar .section-nav button span{display:inline!important}
+  body.sidebar-collapsed .app-shell>.sidebar .section-nav button::before{display:inline-block!important}
+  body.sidebar-collapsed .app-shell>.sidebar .side-top{min-height:100px!important;justify-content:space-between!important}
+  body.sidebar-collapsed .app-shell>.sidebar #sidebar-collapse{transform:none!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-shell *, .mapa-map .pulse-dot{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
