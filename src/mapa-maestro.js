@@ -52,17 +52,7 @@
     shell.dataset.mapaDecorated='1';
     const sidebar=shell.querySelector('.sidebar'),nav=shell.querySelector('.section-nav'),content=shell.querySelector('.content');
     if(!sidebar||!nav||!content)return;
-    const top=sidebar.querySelector('.side-top');
-    const heading=document.createElement('div');
-    heading.className='mapa-side-eyebrow';
-    heading.textContent='LINK WORLD';
-    if(top)top.prepend(heading);
-    const label=document.createElement('div');
-    label.className='mapa-side-label';
-    label.textContent='MESAS / CAPACIDADES';
-    const before=sidebar.querySelector('.new-connection') || sidebar.querySelector('.side-search') || sidebar.querySelector('.side-label');
-    sidebar.insertBefore(label,before);
-    sidebar.insertBefore(nav,before);
+    // La navegación nace dentro del menú: no mover nodos después de vincular eventos.
     nav.querySelectorAll('[data-section]').forEach((btn,i)=>{
       btn.dataset.mapNumber=String(i+1).padStart(2,'0');
       btn.title=btn.textContent.trim();
