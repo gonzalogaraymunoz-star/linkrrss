@@ -10,6 +10,7 @@ import { loadStudio, studioSection, bindStudio } from './studio.js';
 import { comunEscuchaSection } from './comunescucha.js';
 import './comunescucha.css';
 import './mapa-shell.css';
+import './panel-fold.css';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -71,6 +72,8 @@ const state = {
   inboxRefreshing: false,
   lastInboxRefreshAt: null,
   inboxPollTimer: null,
+  inboxPollKey: null,
+  lastLoadedPanelKey: null,
   conversationControl: [],
   conversationFilter: 'all',
   conversationChannel: 'all',
@@ -680,6 +683,51 @@ function setSidebarCollapsed(value){
 }
 function toggleSidebar(){setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));}
 
+function isFocusMode(){try{return localStorage.getItem('linkrrss.focus.mode')==='1';}catch{return false;}}
+function setFocusMode(value){
+  document.body.classList.toggle('link-focus-mode',Boolean(value));
+  try{localStorage.setItem('linkrrss.focus.mode',value?'1':'0');}catch{}
+  const btn=document.getElementById('focus-toggle');
+  if(btn){btn.setAttribute('aria-pressed',String(Boolean(value)));btn.title=value?'Restaurar paneles':'Vista libre · aprovechar toda la pantalla';}
+}
+function ceFoldStorageKey(){return 'linkrrss.ce.fold.'+(state.business?.id||'global');}
+function getCeFold(){
+  try{const value=JSON.parse(localStorage.getItem(ceFoldStorageKey())||'{}');return value&&typeof value==='object'?value:{};}catch{return {};}
+}
+function applyCeFold(){
+  const shell=document.querySelector('.comunescucha-shell');if(!shell)return;
+  const prefs=getCeFold();
+  shell.classList.toggle('ce-fold-list',Boolean(prefs.list));
+  shell.classList.toggle('ce-fold-intelligence',Boolean(prefs.intelligence));
+  document.querySelectorAll('[data-ce-fold]').forEach(button=>{
+    const key=button.dataset.ceFold;
+    const value=key==='focus'?(Boolean(prefs.list)&&Boolean(prefs.intelligence)&&isFocusMode()):Boolean(prefs[key]);
+    button.setAttribute('aria-pressed',String(value));
+    button.setAttribute('title',key==='focus'?(value?'Restaurar columnas y menú':'Vista libre de conversaciones'):value?'Desplegar panel':'Plegar panel');
+    if(key!=='focus')button.setAttribute('aria-expanded',String(!value));
+  });
+}
+function toggleCeFold(which){
+  const prefs=getCeFold();
+  if(which==='focus'){
+    if(!prefs.focus){
+      prefs.beforeFocus={list:Boolean(prefs.list),intelligence:Boolean(prefs.intelligence),nav:isFocusMode()};
+      prefs.list=true;prefs.intelligence=true;prefs.focus=true;
+      setFocusMode(true);
+    }else{
+      prefs.list=Boolean(prefs.beforeFocus?.list);
+      prefs.intelligence=Boolean(prefs.beforeFocus?.intelligence);
+      setFocusMode(Boolean(prefs.beforeFocus?.nav));
+      prefs.focus=false;
+    }
+  }else{
+    prefs[which]=!Boolean(prefs[which]);
+    prefs.focus=false;
+  }
+  try{localStorage.setItem(ceFoldStorageKey(),JSON.stringify(prefs));}catch{}
+  applyCeFold();
+}
+
 function sidebar(){
   const visible=state.businesses.filter(b=>!state.search || b.name.toLowerCase().includes(state.search.toLowerCase()));
   return `
@@ -724,6 +772,7 @@ function topbar(){
         ${gs?'<span class="game-heat-pill '+gameStateTone(gs)+'"><strong>'+Math.round(Number(gs.temperature||0))+'°</strong><span>'+safe(gs.game_state_label)+'</span><small>'+Math.round(Number(gs.conversion_percent||0))+'%</small></span>':''}
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
         ${notificationBell(state)}
+        <button class="icon-btn map-focus-btn" id="focus-toggle" type="button" aria-label="Alternar vista libre" aria-pressed="${isFocusMode()}" title="Vista libre · aprovechar toda la pantalla">⛶</button>
         <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Actualizar conversaciones · sincronización ligera"><i data-lucide="refresh-cw"></i></button>
       </div>
     </header>`;
@@ -1645,6 +1694,7 @@ function bodySection(){
 
 function renderApp(){
   setSidebarCollapsed(isSidebarCollapsed());
+  document.body.classList.toggle('link-focus-mode',isFocusMode());
   $('#app').innerHTML=`
     <div class="app-shell">
       ${sidebar()}
@@ -1661,7 +1711,12 @@ function renderApp(){
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
   configureInboxPolling();
-  setTimeout(()=>loadCurrentSection(),0);
+  document.dispatchEvent(new Event('linkrrss:rendered'));
+  const panelKey=[state.business?.id||'',state.section,state.activeAccount?.id||''].join(':');
+  if(state.lastLoadedPanelKey!==panelKey){
+    state.lastLoadedPanelKey=panelKey;
+    setTimeout(()=>{if(state.lastLoadedPanelKey===panelKey)void loadCurrentSection();},0);
+  }
 }
 
 function bind(){
@@ -1724,6 +1779,9 @@ function bind(){
   $('#close-mobile')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   $('#mobile-scrim')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   $('#sidebar-collapse')?.addEventListener('click',toggleSidebar);
+  $('#focus-toggle')?.addEventListener('click',()=>setFocusMode(!isFocusMode()));
+  document.querySelectorAll('[data-ce-fold]').forEach(btn=>btn.addEventListener('click',()=>toggleCeFold(btn.dataset.ceFold)));
+  applyCeFold();
   document.querySelectorAll('[data-source-sync]').forEach(btn=>btn.onclick=()=>syncSource(btn.dataset.sourceSync));
   document.querySelectorAll('[data-source-connect]').forEach(btn=>btn.onclick=()=>openNetworkModal(btn.dataset.sourceConnect));
 
@@ -1966,14 +2024,14 @@ function bindComunEscuchaResizers(){
 }
 
 function configureInboxPolling(){
-  if(state.inboxPollTimer){
-    clearInterval(state.inboxPollTimer);
-    state.inboxPollTimer=null;
-  }
-  if(state.section!=='inbox'||!state.canManage||!state.business)return;
+  const businessKey=state.section==='inbox'&&state.canManage&&state.business?state.business.id:null;
+  if(state.inboxPollKey===businessKey && (!businessKey || state.inboxPollTimer))return;
+  if(state.inboxPollTimer){clearInterval(state.inboxPollTimer);state.inboxPollTimer=null;}
+  state.inboxPollKey=businessKey;
+  if(!businessKey)return;
   state.inboxPollTimer=setInterval(()=>{
-    if(document.hidden||state.section!=='inbox'||state.inboxRefreshing)return;
-    refreshInboxWorld({silent:true});
+    if(document.hidden||state.section!=='inbox'||state.inboxRefreshing||state.syncing||state.business?.id!==businessKey)return;
+    void refreshInboxWorld({silent:true});
   },20000);
 }
 
