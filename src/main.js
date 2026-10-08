@@ -605,7 +605,7 @@ async function persistWorkspace(){
 }
 function needsAutoSync(){
   if(!state.canManage||!state.sources.length||state.syncing)return false;
-  const last=state.workspace?.last_full_sync_at;
+  const last=state.workspace?.last_sync_started_at||state.workspace?.last_full_sync_at;
   if(!last)return true;
   const minutes=Number(state.workspace?.sync_interval_minutes||5);
   return Date.now()-new Date(last).getTime()>minutes*60000;
@@ -616,7 +616,11 @@ async function maybeAutoSync(force=false){
   state.syncing=true;
   renderApp();
   try{
-    await invokeZernio({action:'sync.business',business_id:state.business.id,trigger:force?'manual':'app_open'});
+    await invokeZernio({
+      action:force?'sync.business':'pulse.sync',
+      business_id:state.business.id,
+      trigger:force?'manual_full':'pulse_auto'
+    });
     await loadBusiness({restore:false});
   }catch(e){
     state.syncing=false;
@@ -1968,9 +1972,9 @@ async function refreshInboxWorld({silent=false}={}){
   if(!silent) renderApp();
   try{
     await invokeZernio({
-      action:'sync.business',
+      action:'pulse.sync',
       business_id:state.business.id,
-      trigger:silent?'inbox_poll':'inbox_manual'
+      trigger:silent?'pulse_inbox_poll':'pulse_inbox_manual'
     });
     state.lastInboxRefreshAt=new Date().toISOString();
     state.panelRefreshAt.set([state.business.id,state.activeAccount?.id||'source','inbox'].join(':'),Date.now());
@@ -2060,7 +2064,7 @@ async function markConversationRead(conversationId){
     await invokeZernio({action:'inbox.read',source_id:source.id,conversation_id:conversationId,account_id:state.activeAccount.external_account_id});
     toast('Conversación marcada como leída.');
     state.panelRefreshAt.delete([state.business.id,state.activeAccount.id,'inbox'].join(':'));
-    await maybeAutoSync(true);
+    await refreshInboxWorld({silent:true});
   }catch(e){toast(e.message||String(e),true);}
 }
 
@@ -2492,7 +2496,7 @@ async function syncSource(id,opts={}){
 }
 
 async function loadHomeLive(){return;}
-async function loadInbox(){return maybeAutoSync(true);}
+async function loadInbox(){return refreshInboxWorld({silent:true});}
 async function loadContent(){return maybeAutoSync(true);}
 async function loadAnalytics(){return maybeAutoSync(true);}
 async function loadAutomations(){return maybeAutoSync(true);}
