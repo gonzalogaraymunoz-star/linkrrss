@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#f7f7f5" />
+  <meta name="theme-color" content="#f8f8f5" />
   <link rel="icon" href="/link-world-mark.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/link-world-mark.svg" />
   <title>LINK RRSS</title>
@@ -13,7 +13,29 @@
 <body>
   <div id="app"></div>
   <a class="link-world-return" href="https://link-world-game.pages.dev/" aria-label="Volver a LINK WORLD GAME">↖ LINK WORLD</a>
+  <script>
+    // LINK WORLD GAME navigation compatibility (before app boot).
+    (() => {
+      const url = new URL(location.href), p = url.searchParams;
+      let dirty = false;
+      const business = p.get('business_slug');
+      const requested = p.get('view') || p.get('panel') || p.get('dimension');
+      const section = ({
+        rrss:'home',social:'home',messages:'inbox',conversations:'inbox',
+        conversation:'inbox',escucha:'inbox',inbox:'inbox',
+        analytics:'analytics',metricas:'analytics',connections:'connections',
+        canales:'connections',publicaciones:'content',contenido:'content',
+        calendario:'calendar',automatizaciones:'automations',
+        actividad:'activity',operaciones:'operation',mar:'inbox'
+      })[(requested||'').toLowerCase()] || requested;
+      if(!p.get('business') && business){p.set('business',business);dirty=true;}
+      if(!p.get('section') && section){p.set('section',section);dirty=true;}
+      if(!p.get('section') && p.get('conversation_id')){p.set('section','inbox');dirty=true;}
+      if(dirty)history.replaceState({},'',url);
+    })();
+  </script>
   <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/mapa-maestro.js"></script>
   <script type="module" src="/src/missionEntry.js"></script>
 </body>
 </html>
