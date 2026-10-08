@@ -618,9 +618,9 @@ async function maybeAutoSync(force=false){
   renderApp();
   try{
     await invokeZernio({
-      action:force?'sync.business':'pulse.sync',
+      action:'pulse.sync',
       business_id:state.business.id,
-      trigger:force?'manual_full':'pulse_auto'
+      trigger:force?'pulse_manual':'pulse_auto'
     });
     await loadBusiness({restore:false});
   }catch(e){
@@ -724,7 +724,7 @@ function topbar(){
         ${gs?'<span class="game-heat-pill '+gameStateTone(gs)+'"><strong>'+Math.round(Number(gs.temperature||0))+'°</strong><span>'+safe(gs.game_state_label)+'</span><small>'+Math.round(Number(gs.conversion_percent||0))+'%</small></span>':''}
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
         ${notificationBell(state)}
-        <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Forzar sincronización"><i data-lucide="refresh-cw"></i></button>
+        <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Actualizar conversaciones · sincronización ligera"><i data-lucide="refresh-cw"></i></button>
       </div>
     </header>`;
 }
@@ -1864,7 +1864,7 @@ async function loadCurrentSection(){
   const last=state.panelRefreshAt.get(key)||0;
   if(Date.now()-last>45000){
     state.panelRefreshAt.set(key,Date.now());
-    await maybeAutoSync(true);
+    await maybeAutoSync(false);
     return;
   }
   if(state.section==='activity') await loadActivityComments();
@@ -2509,9 +2509,9 @@ async function syncSource(id,opts={}){
 
 async function loadHomeLive(){return;}
 async function loadInbox(){return refreshInboxWorld({silent:true});}
-async function loadContent(){return maybeAutoSync(true);}
-async function loadAnalytics(){return maybeAutoSync(true);}
-async function loadAutomations(){return maybeAutoSync(true);}
+async function loadContent(){return maybeAutoSync(false);}
+async function loadAnalytics(){return maybeAutoSync(false);}
+async function loadAutomations(){return maybeAutoSync(false);}
 
 if(bootKaraokeRoute()){
   // LINK Karaoke owns /karaoke, /karaoke/join/:site and /karaoke/board/:site.
