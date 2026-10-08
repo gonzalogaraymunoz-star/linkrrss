@@ -698,7 +698,7 @@ function sidebar(){
           </button>`}).join('')}
       </nav>
       <div class="side-footer">
-        <button id="back-world"><i data-lucide="arrow-left"></i><span>Volver a LINK WORLD</span></button>
+        <button id="back-world"><i data-lucide="arrow-left"></i><span>Volver a LINK WORLD GAME</span></button>
         ${state.canManage?'<button id="logout"><span class="user-dot"></span><span>Sesión LINK</span><small>Salir</small></button>':'<button id="admin-login"><span class="user-dot public"></span><span>Vista abierta</span><small>Administrar</small></button>'}
       </div>
     </aside>`;
@@ -1696,7 +1696,14 @@ function bind(){
   document.querySelectorAll('[data-draft-cancel]').forEach(btn=>btn.onclick=()=>cancelPublicationDraft(btn.dataset.draftCancel));
   $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
-  $('#back-world')?.addEventListener('click',()=>{location.href=LINK_WORLD_URL+(state.business?('?business='+encodeURIComponent(state.business.id)):'');});
+  $('#back-world')?.addEventListener('click',()=>{
+    const u=new URL(LINK_WORLD_URL);
+    if(state.business){
+      u.searchParams.set('business',state.business.slug||state.business.id);
+      if(state.business.slug==='caracol') u.searchParams.set('experiment','caracol');
+    }
+    location.href=u.toString();
+  });
   $('#mobile-menu')?.addEventListener('click',()=>document.body.classList.add('side-open'));
   $('#close-mobile')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
   $('#mobile-scrim')?.addEventListener('click',()=>document.body.classList.remove('side-open'));
