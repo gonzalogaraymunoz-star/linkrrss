@@ -21,28 +21,28 @@
   let pendingConversation = new URLSearchParams(location.search).get('conversation_id');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const svg = [
-    '<svg viewBox="0 0 1050 315" role="img" aria-label="Diagrama interactivo de LINK ID, canales, seis etapas de Concha y negocio activo">',
-    '<path class="stroke" stroke="#e5e9e4" d="M0 161H1045" stroke-dasharray="1 7"/>',
-    '<path class="stroke" stroke="#e6d8ce" d="M77 162 C155 162 174 68 278 68 S386 120 441 136"/>',
-    '<path class="stroke" stroke="#cbdce6" d="M77 162 C155 162 174 225 278 225 S387 208 441 187"/>',
-    '<circle cx="77" cy="162" r="56" fill="#fff9f5" stroke="#edc7ad"/>',
-    '<circle cx="77" cy="162" r="3" fill="#e79565"/><text class="node" x="77" y="181" text-anchor="middle">LINK ID</text><text class="micro" x="77" y="199" text-anchor="middle">IDENTIDAD</text>',
-    '<text class="micro" x="77" y="85" text-anchor="middle">ENTRADA</text><text class="micro" x="278" y="20" text-anchor="middle">CANALES</text>',
-    '<circle cx="277" cy="68" r="18" fill="#fff" stroke="#d5ded7"/><text class="micro" x="277" y="72" text-anchor="middle">IG</text>',
-    '<circle cx="277" cy="225" r="18" fill="#fff" stroke="#d5ded7"/><text class="micro" x="277" y="229" text-anchor="middle">WA</text>',
-    '<circle cx="542" cy="160" r="134" fill="none" stroke="#efede6"/><circle cx="542" cy="160" r="101" fill="none" stroke="#f2d6c4"/>',
-    '<path class="stroke" stroke="#e6ae88" d="M542 59 A101 101 0 0 1 629 110"/><path class="stroke" stroke="#e6ae88" d="M643 160 A101 101 0 0 1 590 249"/><path class="stroke" stroke="#e6ae88" d="M492 249 A101 101 0 0 1 441 160"/><path class="stroke" stroke="#e6ae88" d="M455 110 A101 101 0 0 1 542 59"/>',
-    ...[['MAR',542,59],['VENTA',629,109],['CIERRE',629,211],['BOARDING',542,261],['OPERACIONES',455,211],['POSTVENTA',455,109]].map(([t,x,y])=>'<g class="stage" data-stage="'+t+'" tabindex="0" role="button" aria-label="Abrir etapa '+t+'"><circle cx="'+x+'" cy="'+y+'" r="28" fill="#fff9f4" stroke="#edc6a9"/><text class="micro" x="'+x+'" y="'+(y+3)+'" text-anchor="middle" style="font-size:'+(t.length>6?8:10)+'px">'+t+'</text></g>'),
-    '<circle cx="542" cy="160" r="65" fill="#fbfcfa" stroke="#e0e7e0"/><text class="node" x="542" y="148" text-anchor="middle" style="letter-spacing:2px">CONCHA</text><text class="micro" x="542" y="170" text-anchor="middle">6 ETAPAS</text><text class="micro" x="542" y="186" text-anchor="middle">1 ECOSISTEMA</text>',
-    '<path class="stroke" stroke="#b9d4e2" d="M655 139 C728 136 720 84 823 84"/><path class="stroke" stroke="#b9d4e2" d="M655 182 C724 184 730 236 823 236"/>',
-    '<circle cx="831" cy="84" r="26" fill="#f3f9fc" stroke="#b2d5e6"/><text class="micro" x="831" y="88" text-anchor="middle">RRSS</text>',
-    '<circle cx="831" cy="236" r="26" fill="#f3f9fc" stroke="#b2d5e6"/><text class="micro" x="831" y="240" text-anchor="middle">DATOS</text>',
-    '<path class="stroke" stroke="#afc8b9" d="M857 84 C914 84 909 160 953 160"/><path class="stroke" stroke="#afc8b9" d="M857 236 C914 236 909 160 953 160"/>',
-    '<circle cx="967" cy="160" r="52" fill="#f5f9f5" stroke="#9dbba9"/><circle class="pulse-dot" cx="967" cy="160" r="4" fill="#6f987e"/>',
-    '<text class="node" x="967" y="185" text-anchor="middle" id="mapa-cell" style="font-size:11px">CÉLULA</text><text class="micro" x="967" y="203" text-anchor="middle">NEGOCIO</text>',
-    '<text class="micro" x="967" y="83" text-anchor="middle">CONTEXTO ACTIVO</text>',
-    '</svg>'
+    "<svg viewBox=\"0 0 1050 315\" role=\"img\" aria-label=\"Ruta de una señal: LINKRRSS capta, LINK ID identifica, MAR interpreta y la Concha recorre las seis etapas del negocio\">",
+    "<defs><marker id=\"mapa-arrow-blue\" markerWidth=\"7\" markerHeight=\"7\" refX=\"6\" refY=\"3\" orient=\"auto\"><path d=\"M0 0L6 3L0 6\" fill=\"none\" stroke=\"#7fa9bb\" stroke-width=\"1.2\"/></marker><marker id=\"mapa-arrow-orange\" markerWidth=\"7\" markerHeight=\"7\" refX=\"6\" refY=\"3\" orient=\"auto\"><path d=\"M0 0L6 3L0 6\" fill=\"none\" stroke=\"#dcaa88\" stroke-width=\"1.2\"/></marker></defs>",
+    "<path d=\"M154 163H261\" stroke=\"#9ebcc8\" stroke-width=\"1.6\" fill=\"none\" marker-end=\"url(#mapa-arrow-blue)\"/>",
+    "<path d=\"M376 163H482\" stroke=\"#9ebcc8\" stroke-width=\"1.6\" fill=\"none\" marker-end=\"url(#mapa-arrow-blue)\"/>",
+    "<path d=\"M594 163H670\" stroke=\"#dcaa88\" stroke-width=\"1.6\" fill=\"none\" marker-end=\"url(#mapa-arrow-orange)\"/>",
+    "<path d=\"M895 163H919\" stroke=\"#abc6b3\" stroke-width=\"1.6\" fill=\"none\"/>",
+    "<text class=\"micro\" x=\"209\" y=\"142\" text-anchor=\"middle\">REGISTRA</text><text class=\"micro\" x=\"430\" y=\"142\" text-anchor=\"middle\">IDENTIFICA</text><text class=\"micro\" x=\"635\" y=\"142\" text-anchor=\"middle\">ACTIVA</text>",
+    "<text class=\"micro\" x=\"99\" y=\"54\" text-anchor=\"middle\">01 · ARTEFACTO</text>",
+    "<g class=\"map-node\" data-map-action=\"inbox\" tabindex=\"0\" role=\"button\" aria-label=\"Abrir conversaciones LINK RRSS\"><circle cx=\"99\" cy=\"163\" r=\"55\" fill=\"#f1f9fc\" stroke=\"#add0e0\" stroke-width=\"1.4\"/><circle cx=\"99\" cy=\"129\" r=\"4\" fill=\"#5a9ac1\"/><text class=\"node\" x=\"99\" y=\"161\" text-anchor=\"middle\" style=\"font-size:13px\">LINKRRSS</text><text class=\"micro\" x=\"99\" y=\"183\" text-anchor=\"middle\">ESCUCHA</text><text class=\"micro\" x=\"99\" y=\"196\" text-anchor=\"middle\">IG · WA · CANALES</text></g>",
+    "<text class=\"micro\" x=\"319\" y=\"54\" text-anchor=\"middle\">02 · ADUANA</text>",
+    "<g class=\"map-node\" data-map-action=\"linkid\" tabindex=\"0\" role=\"button\" aria-label=\"Abrir LINK ID, la aduana de identidad\"><circle cx=\"319\" cy=\"163\" r=\"57\" fill=\"#fff9f5\" stroke=\"#e8b89f\" stroke-width=\"1.4\"/><circle cx=\"319\" cy=\"128\" r=\"4\" fill=\"#e9a078\"/><text class=\"node\" x=\"319\" y=\"163\" text-anchor=\"middle\" style=\"font-size:14px\">LINK ID</text><text class=\"micro\" x=\"319\" y=\"183\" text-anchor=\"middle\">IDENTIDAD</text><text class=\"micro\" x=\"319\" y=\"197\" text-anchor=\"middle\">SIN DUPLICADOS</text></g>",
+    "<text class=\"micro\" x=\"542\" y=\"54\" text-anchor=\"middle\">03 · PRIMERA ETAPA</text>",
+    "<g class=\"map-node\" data-map-action=\"mar\" tabindex=\"0\" role=\"button\" aria-label=\"Abrir MAR: escucha y oportunidad\"><circle cx=\"542\" cy=\"163\" r=\"53\" fill=\"#fff9f3\" stroke=\"#efc4a6\" stroke-width=\"1.4\"/><circle cx=\"542\" cy=\"131\" r=\"4\" fill=\"#e99c6b\"/><text class=\"node\" x=\"542\" y=\"164\" text-anchor=\"middle\" style=\"font-size:14px\">MAR</text><text class=\"micro\" x=\"542\" y=\"183\" text-anchor=\"middle\">INTERPRETA</text></g>",
+    "<text class=\"micro\" x=\"786\" y=\"21\" text-anchor=\"middle\">04 · CICLO DE LA CONCHA</text>",
+    "<circle cx=\"786\" cy=\"163\" r=\"112\" fill=\"none\" stroke=\"#f0e3d9\"/><circle cx=\"786\" cy=\"163\" r=\"92\" fill=\"none\" stroke=\"#eccdb8\" stroke-dasharray=\"2 5\"/>",
+    "<circle cx=\"786\" cy=\"163\" r=\"56\" fill=\"#fbfcfa\" stroke=\"#dce8df\"/><text class=\"node\" x=\"786\" y=\"154\" text-anchor=\"middle\" style=\"font-size:15px\">CICLO</text><text class=\"micro\" x=\"786\" y=\"174\" text-anchor=\"middle\">6 ETAPAS</text><text class=\"micro\" x=\"786\" y=\"188\" text-anchor=\"middle\">UNA IDENTIDAD</text>",
+    ...[['MAR',786,64],['VENTA',870,113],['CIERRE',870,213],['BOARDING',786,264],['OPERACIONES',702,213],['POSTVENTA',702,113]].map(([t,x,y])=>'<g class="stage" data-stage="'+t+'" tabindex="0" role="button" aria-label="Abrir etapa '+t+'"><circle cx="'+x+'" cy="'+y+'" r="24" fill="#fffaf6" stroke="#e9c3a9"/><text class="micro" x="'+x+'" y="'+(y+3)+'" text-anchor="middle" style="font-size:'+(t.length>7?7:9)+'px">'+t+'</text></g>'),
+    "<text class=\"micro\" x=\"973\" y=\"54\" text-anchor=\"middle\">05 · CONTEXTO</text>",
+    "<circle cx=\"973\" cy=\"163\" r=\"52\" fill=\"#f5f9f5\" stroke=\"#9dbca6\" stroke-width=\"1.4\"/><circle class=\"pulse-dot\" cx=\"973\" cy=\"133\" r=\"4\" fill=\"#79a48b\"/><text class=\"node\" x=\"973\" y=\"164\" text-anchor=\"middle\" id=\"mapa-cell\" style=\"font-size:11px\">CÉLULA</text><text class=\"micro\" x=\"973\" y=\"184\" text-anchor=\"middle\">NEGOCIO</text>",
+    "</svg>",
   ].join('');
+
   function currentSection(shell){
     return shell.querySelector('.section-nav [data-section].active')?.dataset.section || new URLSearchParams(location.search).get('section') || 'home';
   }
@@ -68,11 +68,18 @@
     if(section==='home'){
       const map=document.createElement('section');
       map.className='mapa-map';
-      map.innerHTML='<div class="mapa-map-top"><span class="mapa-map-overline">MAPA DE MOVIMIENTO / RRSS</span><div class="mapa-map-legend"><span>CONCHA</span><span>ARTEFACTO</span><span>CÉLULA</span></div></div>'+svg+'<div class="mapa-map-bottom"><span>De la señal al contexto; del contexto a la acción verificable.</span><button type="button" data-mapa-inbox>Explorar conversaciones ↗</button></div>';
+      map.innerHTML='<div class="mapa-map-top"><span class="mapa-map-overline">RUTA DE ENTRADA / MAR</span><div class="mapa-map-legend"><span>ESCUCHA</span><span>ADUANA</span><span>CONCHA</span></div></div>'+svg+'<div class="mapa-map-bottom"><span>LINKRRSS capta → LINK ID identifica → MAR interpreta → el ciclo avanza.</span><button type="button" data-mapa-inbox>Explorar conversaciones ↗</button></div>';
       content.insertBefore(map,head.nextSibling);
       const cell=map.querySelector('#mapa-cell');
       if(cell)cell.textContent=selected.toUpperCase().slice(0,12);
       map.querySelector('[data-mapa-inbox]')?.addEventListener('click',()=>nav.querySelector('[data-section="inbox"]')?.click());
+      const linkIdUrl=()=>{const u=new URL('https://link-world-9h0.pages.dev/');u.searchParams.set('dimension','personas');const business=new URLSearchParams(location.search).get('business');if(business)u.searchParams.set('business',business);location.assign(u.toString());};
+      const openMapAction=(name)=>{if(name==='linkid')return linkIdUrl();nav.querySelector('[data-section="inbox"]')?.click();};
+      map.querySelectorAll('[data-map-action]').forEach(node=>{
+        const go=()=>openMapAction(node.dataset.mapAction);
+        node.addEventListener('click',go);
+        node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+      });
       map.querySelectorAll('[data-stage]').forEach(btn=>{
         const go=()=>nav.querySelector('[data-section="'+stageTargets[btn.dataset.stage]+'"]')?.click();
         btn.addEventListener('click',go);
