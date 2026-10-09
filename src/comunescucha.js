@@ -115,6 +115,19 @@ function conversationCard(row,selected){
     '<span class="ce-attention '+esc(row.attention_state||'seguimiento')+'">'+esc(attentionLabels[row.attention_state]||'Seguimiento')+'</span>'+
   '</button>';
 }
+
+/* Filter only the inbox list, without rebuilding the entire application on every keystroke. */
+export function comunEscuchaListResults({state}){
+  const rows=filteredRows(state);
+  const selectedId=String(state.selectedConversationId||'');
+  return {
+    count:rows.length,
+    html:rows.length
+      ? rows.map(r=>conversationCard(r,String(r.external_conversation_id)===selectedId)).join('')
+      : '<div class="ce-list-empty">No hay conversaciones con estos filtros.</div>'
+  };
+}
+
 function emptyPanel(){
   return '<section class="ce-thread-empty"><div class="ce-orbit"><span></span><b>CE</b></div><strong>Selecciona una conversación</strong><p>ComunEscucha ya ordenó la bandeja. Abre un contacto para ver el hilo, la interpretación y el especialista asignado.</p></section>';
 }
@@ -282,7 +295,7 @@ export function comunEscuchaSection({state}){
     return '<section class="section-heading compact"><div><span class="eyebrow">COMUNESCUCHA</span><h1>Conversaciones</h1><p>La memoria social es privada. Entra en modo Administración para leer, clasificar y responder.</p></div></section>';
   }
   const all=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id);
-  const rows=filteredRows(state);
+  const listResults=comunEscuchaListResults({state});
   const stats=topStats(all);
   const selected=all.find(r=>String(r.external_conversation_id)===String(state.selectedConversationId))||null;
   const channels=[...new Set(all.map(r=>String(r.platform||'').toLowerCase()).filter(Boolean))].sort();
@@ -305,10 +318,10 @@ export function comunEscuchaSection({state}){
     '<details class="ce-deep-search-drawer" '+(state.ceDeepSearchOpen||state.conversationDeepSearchQuery?'open':'')+'><summary>⌕ Buscar dentro del historial de mensajes</summary>'+deepSearchMarkup(state)+'</details>'+
     '<div class="comunescucha-shell '+(selected?'ce-mobile-thread ':'')+(state.ceMobileIntelligenceOpen?'ce-mobile-intelligence':'')+'">'+
       '<aside class="ce-list" id="ce-conversation-list" aria-label="Bandeja de conversaciones">'+
-        '<div class="ce-list-head"><div><strong>Bandeja de entrada</strong><small>'+rows.length+' conversaciones · '+stats.reply+' por responder</small></div><span class="ce-live-indicator" title="Datos guardados">●</span></div>'+
+        '<div class="ce-list-head"><div><strong>Bandeja de entrada</strong><small><span data-ce-list-count>'+listResults.count+'</span> conversaciones · '+stats.reply+' por responder</small></div><span class="ce-live-indicator" title="Datos guardados">●</span></div>'+
         '<div class="ce-toolbar"><label class="ce-search"><span aria-hidden="true">⌕</span><input id="ce-search" type="search" value="'+esc(state.conversationQuery||'')+'" placeholder="Buscar contacto o mensaje" aria-label="Buscar conversaciones"></label><select id="ce-channel" aria-label="Filtrar por canal"><option value="all">Todos los canales</option>'+channels.map(c=>'<option value="'+esc(c)+'" '+(state.conversationChannel===c?'selected':'')+'>'+esc(c[0].toUpperCase()+c.slice(1))+'</option>').join('')+'</select></div>'+
         '<div class="ce-tabbar" role="group" aria-label="Filtrar por estado">'+tabs.map(([key,label,count])=>'<button type="button" data-ce-state="'+esc(key)+'" aria-pressed="'+((state.conversationFilter||'all')===key?'true':'false')+'" class="'+((state.conversationFilter||'all')===key?'active':'')+'"><span>'+esc(label)+'</span><b>'+count+'</b></button>').join('')+'</div>'+
-        '<div class="ce-list-scroll">'+(rows.length?rows.map(r=>conversationCard(r,selected?.conversation_id===r.conversation_id)).join(''):'<div class="ce-list-empty">No hay conversaciones con estos filtros.</div>')+'</div>'+
+        '<div class="ce-list-scroll">'+listResults.html+'</div>'+
       '</aside>'+
       '<div class="ce-resizer left" data-ce-resizer="left" role="separator" aria-label="Ajustar ancho de lista" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       threadMarkup(state,selected)+

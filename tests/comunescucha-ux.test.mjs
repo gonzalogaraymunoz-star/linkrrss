@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { comunEscuchaSection } from '../src/comunescucha.js';
+import { comunEscuchaSection, comunEscuchaListResults } from '../src/comunescucha.js';
 
 function makeState(overrides={}) {
   const business={id:'biz-demo',name:'Negocio de prueba'};
@@ -60,4 +60,15 @@ test('sin permisos no expone conversaciones privadas',()=>{
   const html=comunEscuchaSection({state:makeState({canManage:false})});
   assert.ok(!html.includes('Cliente demo'));
   assert.match(html,/modo Administración/);
+});
+
+test('filtrado de la bandeja sin reconstruir la vista',()=>{
+  const state=makeState({conversationQuery:'cliente demo'});
+  const found=comunEscuchaListResults({state});
+  assert.equal(found.count,1);
+  assert.match(found.html,/Cliente demo/);
+  state.conversationQuery='no existe';
+  const empty=comunEscuchaListResults({state});
+  assert.equal(empty.count,0);
+  assert.match(empty.html,/No hay conversaciones/);
 });
