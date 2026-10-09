@@ -1,0 +1,125 @@
+/* LINK 1.0 · ComunEscucha — Architectural Ledger / Chatwoot-inspired interaction */
+.comunescucha-page{--ce-paper:#FBF9F9;--ce-ink:#1B1C1C;--ce-charcoal:#1B1C1C;--ce-stone:#676B67;--ce-line:#E2E3E0;--ce-acid:#C8FF3D;--ce-acid-soft:#EDFFC0;display:flex;flex-direction:column;gap:10px;min-width:0;font-family:Inter,"DM Sans",system-ui,sans-serif}
+.comunescucha-page .ce-hero{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:4px 0 8px}
+.comunescucha-page .ce-hero h1{font-size:clamp(24px,2.5vw,32px);margin:3px 0 2px;line-height:1.1}
+.comunescucha-page .ce-hero p{font-size:12px;color:#757A75}
+.ce-page-actions,.ce-live-sync{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ce-live-sync button{border:1px solid var(--ce-line);border-radius:10px;background:#fff;padding:9px 12px;font-size:12px;cursor:pointer}
+.ce-live-sync small{font-size:10px;color:#777}
+.comunescucha-page .ce-panel-togglebar{margin:0;padding:0;gap:5px;flex-wrap:nowrap}
+.comunescucha-page .ce-panel-togglebar button{font-size:12px;min-height:38px;padding:8px 10px;color:#555;background:#fff}
+.comunescucha-page .ce-panel-togglebar button[aria-pressed=true]{background:#1B1C1C;color:#fff;border-color:#1B1C1C}
+.comunescucha-page .ce-deep-search-drawer{border:1px solid var(--ce-line);border-radius:10px;background:#fff;overflow:hidden}
+.comunescucha-page .ce-deep-search-drawer>summary{padding:8px 12px;cursor:pointer;font-size:11px;list-style:none;color:#676B67}
+.comunescucha-page :is(.ce-deep-search-drawer,.ce-analysis-details,.ce-workbench)>summary::-webkit-details-marker{display:none}
+.comunescucha-page .ce-deep-search-panel{border:0}
+.comunescucha-page .comunescucha-shell{--ce-left-width:316px;--ce-right-width:328px;height:clamp(620px,calc(100dvh - 205px),1080px);min-height:620px;background:#fff;border:1px solid var(--ce-line);border-radius:15px;overflow:hidden;box-shadow:0 12px 38px rgba(27,28,28,.04)}
+.comunescucha-page .ce-list{grid-template-rows:auto auto auto minmax(0,1fr);background:#F7F7F4;min-height:0}
+.comunescucha-page .ce-list-head{padding:16px;align-items:center}
+.comunescucha-page .ce-list-head strong{font-size:15px}
+.comunescucha-page .ce-list-head small{font-size:11px;margin-top:4px}
+.ce-live-indicator{color:#77A438;font-size:12px}
+.comunescucha-page .ce-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;padding:11px 12px 9px}
+.comunescucha-page .ce-search{height:39px;border-radius:9px;background:#fff;padding:0 10px}
+.comunescucha-page .ce-search input{font-size:12px}
+.comunescucha-page .ce-toolbar select{height:39px;max-width:126px;font-size:11px;border-radius:9px;background:#fff}
+.comunescucha-page .ce-tabbar{padding:0 12px 11px;gap:5px;scrollbar-width:thin}
+.comunescucha-page .ce-tabbar button{font-size:11px;padding:6px 9px;cursor:pointer}
+.comunescucha-page .ce-tabbar button b{font-size:10px}
+.comunescucha-page .ce-list-scroll{min-height:0;overscroll-behavior:contain}
+.comunescucha-page .ce-conversation-card{grid-template-columns:40px minmax(0,1fr);gap:10px;padding:13px 12px;cursor:pointer}
+.comunescucha-page .ce-conversation-card .ce-attention{grid-column:2;justify-self:start;font-size:10px;padding:4px 7px;margin:0}
+.comunescucha-page .ce-avatar{width:40px;height:40px;font-size:13px}
+.comunescucha-page .ce-card-line strong{font-size:13px}
+.comunescucha-page .ce-card-line small{font-size:10px}
+.comunescucha-page .ce-card-meta{font-size:11px}
+.comunescucha-page .ce-card-meta b{font-size:9px}
+.comunescucha-page .ce-card-copy p{font-size:12px;line-height:1.45}
+.comunescucha-page .ce-chip{font-size:10px}
+.comunescucha-page .ce-thread{grid-template-rows:auto minmax(0,1fr) auto auto;overflow:hidden;min-height:0;background:#fff}
+.comunescucha-page .ce-thread-head{padding:13px 17px;align-items:center;gap:10px}
+.comunescucha-page .ce-thread-person strong{font-size:15px}
+.comunescucha-page .ce-thread-person small{font-size:11px}
+.comunescucha-page .ce-thread-actions{flex-wrap:wrap;justify-content:flex-end}
+.comunescucha-page .ce-thread-actions label,.comunescucha-page .ce-listener{font-size:10px}
+.comunescucha-page .ce-thread-actions select,.comunescucha-page .ce-thread-actions button{font-size:11px;min-height:34px}
+.comunescucha-page .ce-message-thread{min-height:0;max-height:none!important;overflow-y:auto;overscroll-behavior:contain;padding:20px;background:#F4F5F2}
+.comunescucha-page .ce-message{max-width:min(82%,600px);padding:11px 14px}
+.comunescucha-page .ce-message p{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.comunescucha-page .ce-message small{font-size:10px}
+.comunescucha-page .ce-workbench{padding:0;background:#FAFAF8;border-top:1px solid var(--ce-line)}
+.comunescucha-page .ce-workbench>summary{display:flex;align-items:center;gap:8px;list-style:none;padding:10px 16px;cursor:pointer}
+.comunescucha-page .ce-workbench>summary strong{font-size:12px}
+.comunescucha-page .ce-workbench>summary small{font-size:10px;color:#8B9089}
+.comunescucha-page .ce-disclosure{margin-left:auto}
+.comunescucha-page .ce-workbench-body{padding:0 16px 13px;max-height:33vh;overflow:auto}
+.comunescucha-page .ce-workbench-head strong{font-size:12px}
+.comunescucha-page .ce-workbench textarea{font-size:12px}
+.comunescucha-page .ce-quick-actions button{font-size:11px}
+.comunescucha-page .ce-workbench-note span,.comunescucha-page .ce-workbench-note button{font-size:10px}
+.comunescucha-page .ce-reply{padding:12px 16px;background:#fff}
+.comunescucha-page .ce-reply label{font-size:11px}
+.comunescucha-page .ce-reply textarea{font-size:13px;min-height:68px;max-height:22vh}
+.comunescucha-page .ce-reply small{font-size:10px}
+.comunescucha-page .ce-reply button.primary{font-size:12px;min-height:38px}
+.comunescucha-page .ce-intelligence{min-height:0;padding:15px;background:#F8F8F5;gap:12px;overflow:auto}
+.comunescucha-page .ce-side-title h2{font-size:18px}
+.comunescucha-page .ce-side-title p{font-size:11px}
+.comunescucha-page .ce-analysis-state,.comunescucha-page .ce-info-label{font-size:10px}
+.comunescucha-page .ce-info-grid strong,.comunescucha-page .ce-info-card p,.comunescucha-page .ce-step-copy>strong{font-size:12px}
+.comunescucha-page .ce-big{font-size:14px}
+.comunescucha-page .ce-specialist-meta,.comunescucha-page .ce-apparatus-row small{font-size:11px}
+.comunescucha-page .ce-apparatus-row strong{font-size:13px}
+.comunescucha-page .ce-analysis-details{border:1px solid var(--ce-line);border-radius:11px;background:#fff;overflow:hidden}
+.comunescucha-page .ce-analysis-details>summary{cursor:pointer;list-style:none;font-size:12px;font-weight:650;padding:12px}
+.comunescucha-page .ce-analysis-details>summary span{float:right;font-size:10px;color:#888}
+.comunescucha-page .ce-abstraction-protocol{padding:0 10px 10px}
+.comunescucha-page .ce-step-copy>p{font-size:11px}
+.comunescucha-page .ce-step-index{font-size:10px}
+.comunescucha-page .ce-mobile-navigation,.comunescucha-page .ce-intelligence-close{display:none}
+.comunescucha-page :is(button,input,select,textarea,summary):focus-visible{outline:2px solid #4B966E;outline-offset:2px}
+.comunescucha-page .ce-conversation-card.active{background:#F1F7E7;box-shadow:inset 3px 0 0 #9DCE24}
+.comunescucha-page .ce-conversation-card:hover{background:#F0F3EC}
+@media(min-width:761px) and (max-width:1180px){
+ .comunescucha-page .comunescucha-shell{position:relative;grid-template-columns:minmax(240px,30%) minmax(0,1fr)!important}
+ .comunescucha-page .ce-list{grid-column:1;grid-row:1}
+ .comunescucha-page .ce-thread{grid-column:2;grid-row:1}
+ .comunescucha-page .ce-intelligence{display:none}
+ .comunescucha-page .comunescucha-shell:not(.ce-fold-intelligence) .ce-intelligence{display:block;position:absolute;right:0;top:0;bottom:0;width:min(360px,65%);z-index:5;box-shadow:-10px 0 28px rgba(0,0,0,.08)}
+ .comunescucha-page .ce-resizer{display:none}
+ .comunescucha-page .comunescucha-shell.ce-fold-list{grid-template-columns:minmax(0,1fr)!important}
+ .comunescucha-page .comunescucha-shell.ce-fold-list>.ce-list{display:none!important}
+ .comunescucha-page .comunescucha-shell.ce-fold-list>.ce-thread{grid-column:1}
+}
+@media(max-width:760px){
+ .comunescucha-page .ce-hero{padding:4px 0;gap:9px}
+ .comunescucha-page .ce-hero h1{font-size:24px}
+ .comunescucha-page .ce-page-actions{width:100%;justify-content:space-between}
+ .comunescucha-page .ce-live-sync small,.comunescucha-page .ce-panel-togglebar button span{display:none}
+ .comunescucha-page .ce-panel-togglebar button{min-height:42px;padding:8px 9px}
+ .comunescucha-page .comunescucha-shell{height:calc(100dvh - 198px);min-height:520px;position:relative;display:block!important}
+ .comunescucha-page .ce-list{height:100%;max-height:none!important;display:grid!important}
+ .comunescucha-page .ce-thread{display:none;height:100%;min-height:0}
+ .comunescucha-page .ce-intelligence,.comunescucha-page .ce-resizer{display:none!important}
+ .comunescucha-page .comunescucha-shell.ce-mobile-thread>.ce-list{display:none!important}
+ .comunescucha-page .comunescucha-shell.ce-mobile-thread>.ce-thread{display:grid!important}
+ .comunescucha-page .comunescucha-shell.ce-mobile-intelligence>.ce-intelligence{display:grid!important;position:absolute;inset:0;z-index:7;background:#FBF9F9}
+ .comunescucha-page .ce-mobile-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+ .comunescucha-page .ce-mobile-navigation button,.comunescucha-page .ce-intelligence-close{display:inline-flex;border:1px solid var(--ce-line);background:#fff;border-radius:9px;padding:8px 10px;font-size:12px;min-height:38px}
+ .comunescucha-page .ce-thread-head{flex-wrap:wrap;padding:10px}
+ .comunescucha-page .ce-thread-person strong{font-size:13px}
+ .comunescucha-page .ce-thread-actions{justify-content:flex-start}
+ .comunescucha-page .ce-list-head{padding:12px}
+ .comunescucha-page .ce-toolbar{padding:8px}
+ .comunescucha-page .ce-message-thread{padding:12px}
+ .comunescucha-page .ce-message{max-width:92%}
+ .comunescucha-page .ce-reply{padding:9px}
+ .comunescucha-page .ce-reply textarea{font-size:16px;min-height:54px}
+ .comunescucha-page .ce-reply>div{align-items:flex-start;flex-wrap:wrap}
+ .comunescucha-page .ce-workbench>summary small{display:none}
+ .comunescucha-page .ce-workbench-body{max-height:25vh}
+}
+@media(prefers-reduced-motion:reduce){.comunescucha-page button{transition:none!important}}
+
+/* On mobile, ignore stored desktop fold preferences when returning to the inbox list. */
+@media(max-width:760px){.comunescucha-page .comunescucha-shell.ce-fold-list:not(.ce-mobile-thread)>.ce-list{display:grid!important}}
