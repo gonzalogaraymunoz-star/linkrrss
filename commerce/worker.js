@@ -57,9 +57,9 @@ const b=await readBody();if(!uid(b.business_id))return send({error:'Business ID 
 const row={business_id:b.business_id,status:'active',business_model:'configurable',created_by:user.id};
 return send(await supabase('/rest/v1/link_commerce_accounts?select=*','POST',token,row,'return=representation'),201);
 }
-const accountMatch=path.match(/^\\/api\\/accounts\\/([0-9a-f-]{36})$/i);
-if(accountMatch&&request.method==='PATCH'){
-const id=accountMatch[1];if(!uid(id))return send({error:'Cuenta inválida'},400);
+const accountPath=path.startsWith('/api/accounts/')?path.slice('/api/accounts/'.length):null;
+if(accountPath&&uid(accountPath)&&request.method==='PATCH'){
+const id=accountPath;
 const b=await readBody();if(!['active','paused'].includes(b.status))return send({error:'Estado inválido'},400);
 return send(await supabase('/rest/v1/link_commerce_accounts?id=eq.'+encodeURIComponent(id)+'&select=*','PATCH',token,{status:b.status,updated_at:new Date().toISOString()},'return=representation'));
 }
