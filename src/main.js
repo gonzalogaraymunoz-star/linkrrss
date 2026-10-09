@@ -1702,7 +1702,9 @@ function bodySection(){
 function renderApp(){
   const previousListScroll=document.querySelector('.ce-list-scroll')?.scrollTop||0;
   const previousThreadId=document.querySelector('.ce-thread')?.dataset.ceThreadId;
-  const previousMessageScroll=document.querySelector('.ce-message-thread')?.scrollTop||0;
+  const previousMessageElement=document.querySelector('.ce-message-thread');
+  const previousMessageScroll=previousMessageElement?.scrollTop||0;
+  const previousMessageNearBottom=previousMessageElement?previousMessageElement.scrollHeight-previousMessageElement.clientHeight-previousMessageElement.scrollTop<80:false;
   const previousIntelligenceScroll=document.querySelector('.ce-intelligence')?.scrollTop||0;
   setSidebarCollapsed(isSidebarCollapsed());
   document.body.classList.toggle('link-focus-mode',isFocusMode());
@@ -1723,7 +1725,7 @@ function renderApp(){
   bind();
   if(state.section==='inbox'){
     const list=document.querySelector('.ce-list-scroll');if(list)list.scrollTop=previousListScroll;
-    const thread=document.querySelector('.ce-message-thread');if(thread)thread.scrollTop=previousThreadId===String(state.selectedConversationId)?previousMessageScroll:thread.scrollHeight;
+    const thread=document.querySelector('.ce-message-thread');if(thread)thread.scrollTop=previousThreadId===String(state.selectedConversationId)&&!previousMessageNearBottom?previousMessageScroll:thread.scrollHeight;
     const intelligence=document.querySelector('.ce-intelligence');if(intelligence)intelligence.scrollTop=previousIntelligenceScroll;
   }
   configureInboxPolling();
