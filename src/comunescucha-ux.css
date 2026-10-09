@@ -120,3 +120,6 @@
  .comunescucha-page .ce-workbench-body{max-height:25vh}
 }
 @media(prefers-reduced-motion:reduce){.comunescucha-page button{transition:none!important}}
+
+/* On mobile, ignore stored desktop fold preferences when returning to the inbox list. */
+@media(max-width:760px){.comunescucha-page .comunescucha-shell.ce-fold-list:not(.ce-mobile-thread)>.ce-list{display:grid!important}}

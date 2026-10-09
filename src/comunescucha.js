@@ -159,7 +159,7 @@ function threadMarkup(state,row){
     '</form>'+
   '</section>';
 }
-function intelligenceMarkup(row){
+function intelligenceMarkup(state,row){
   if(!row) return '<aside class="ce-intelligence empty"><span class="eyebrow">INTELIGENCIA</span><p>Selecciona una conversación.</p></aside>';
   const profile=row.response_profile||{};
   const products=Array.isArray(row.products)?row.products:[];
@@ -313,7 +313,7 @@ export function comunEscuchaSection({state}){
       '<div class="ce-resizer left" data-ce-resizer="left" role="separator" aria-label="Ajustar ancho de lista" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       threadMarkup(state,selected)+
       '<div class="ce-resizer right" data-ce-resizer="right" role="separator" aria-label="Ajustar ancho de inteligencia" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
-      intelligenceMarkup(selected).replace('class="ce-intelligence','id="ce-intelligence-panel" class="ce-intelligence')+
+      intelligenceMarkup(state,selected).replace('class="ce-intelligence','id="ce-intelligence-panel" class="ce-intelligence')+
     '</div>'+
   '</section>';
 }
