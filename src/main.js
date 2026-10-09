@@ -11,6 +11,7 @@ import { comunEscuchaSection } from './comunescucha.js';
 import './comunescucha.css';
 import './mapa-shell.css';
 import './panel-fold.css';
+import './comunescucha-ux.css';
 
 const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
@@ -64,6 +65,12 @@ const state = {
   selectedPostId: null,
   selectedConversationId: null,
   conversationMessages: {},
+  conversationDrafts: {},
+  conversationWorkDrafts: {},
+  ceWorkbenchOpen: false,
+  ceAnalysisOpen: false,
+  ceDeepSearchOpen: false,
+  ceMobileIntelligenceOpen: false,
   conversationLoading: {},
   translateDimension: false,
   translateLanguage: 'original',
@@ -1693,6 +1700,10 @@ function bodySection(){
 }
 
 function renderApp(){
+  const previousListScroll=document.querySelector('.ce-list-scroll')?.scrollTop||0;
+  const previousThreadId=document.querySelector('.ce-thread')?.dataset.ceThreadId;
+  const previousMessageScroll=document.querySelector('.ce-message-thread')?.scrollTop||0;
+  const previousIntelligenceScroll=document.querySelector('.ce-intelligence')?.scrollTop||0;
   setSidebarCollapsed(isSidebarCollapsed());
   document.body.classList.toggle('link-focus-mode',isFocusMode());
   $('#app').innerHTML=`
@@ -1710,6 +1721,11 @@ function renderApp(){
     <div id="toast" class="toast hidden"></div>`;
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
+  if(state.section==='inbox'){
+    const list=document.querySelector('.ce-list-scroll');if(list)list.scrollTop=previousListScroll;
+    const thread=document.querySelector('.ce-message-thread');if(thread)thread.scrollTop=previousThreadId===String(state.selectedConversationId)?previousMessageScroll:thread.scrollHeight;
+    const intelligence=document.querySelector('.ce-intelligence');if(intelligence)intelligence.scrollTop=previousIntelligenceScroll;
+  }
   configureInboxPolling();
   document.dispatchEvent(new Event('linkrrss:rendered'));
   const panelKey=[state.business?.id||'',state.section,state.activeAccount?.id||''].join(':');
@@ -1814,11 +1830,21 @@ function bind(){
       if(account) state.activeAccount=account;
     }
     state.selectedConversationId=btn.dataset.conversation;
+    state.ceMobileIntelligenceOpen=false;
     state.translateDimension=false;
     state.translateLanguage='original';
     renderApp();
   });
   $('#ce-refresh')?.addEventListener('click',()=>refreshInboxWorld({silent:false}));
+  $('[data-ce-back-list]')?.addEventListener('click',()=>{state.selectedConversationId=null;state.ceMobileIntelligenceOpen=false;renderApp();});
+  $('[data-ce-open-intelligence]')?.addEventListener('click',()=>{state.ceMobileIntelligenceOpen=!state.ceMobileIntelligenceOpen;renderApp();});
+  $('[data-ce-close-intelligence]')?.addEventListener('click',()=>{state.ceMobileIntelligenceOpen=false;renderApp();});
+  document.querySelector('.ce-workbench')?.addEventListener('toggle',e=>{state.ceWorkbenchOpen=e.currentTarget.open;});
+  document.querySelector('.ce-analysis-details')?.addEventListener('toggle',e=>{state.ceAnalysisOpen=e.currentTarget.open;});
+  document.querySelector('.ce-deep-search-drawer')?.addEventListener('toggle',e=>{state.ceDeepSearchOpen=e.currentTarget.open;});
+  const draftKey=[state.business?.id,state.activeAccount?.id,state.selectedConversationId].join(':');
+  $('#conversation-reply')?.addEventListener('input',e=>{state.conversationDrafts[draftKey]=e.target.value;});
+  $('#ce-work-input')?.addEventListener('input',e=>{state.conversationWorkDrafts[draftKey]=e.target.value;});
   document.querySelectorAll('[data-translate-dimension]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.translateDimension;
     state.translateDimension=!state.translateDimension;
@@ -1844,6 +1870,7 @@ function bind(){
     const accountId=btn.dataset.accountId;
     if(accountId){const account=state.accounts.find(x=>x.id===accountId);if(account)state.activeAccount=account;}
     state.selectedConversationId=btn.dataset.ceSearchResult;
+    state.ceMobileIntelligenceOpen=false;
     state.conversationDeepSearchResults=[];
     state.conversationDeepSearchQuery='';
     renderApp();
@@ -2156,6 +2183,7 @@ async function sendConversationReply(conversationId){
     });
     toast('Respuesta enviada.');
     if(box)box.value='';
+    delete state.conversationDrafts[[state.business?.id,state.activeAccount?.id,conversationId].join(':')];
     delete state.conversationMessages[conversationId];
     await loadConversationMessages(conversationId);
     await saveConversationStatus(conversationId,'open');

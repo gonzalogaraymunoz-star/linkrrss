@@ -104,7 +104,7 @@ function topStats(rows){
 function conversationCard(row,selected){
   const products=Array.isArray(row.products)?row.products:[];
   const unread=Number(row.unread_count||0);
-  return '<button class="ce-conversation-card '+(selected?'active':'')+'" data-conversation="'+esc(row.external_conversation_id)+'" data-conversation-account="'+esc(row.account_id)+'">'+
+  return '<button type="button" aria-current="'+(selected?'true':'false')+'" class="ce-conversation-card '+(selected?'active':'')+'" data-conversation="'+esc(row.external_conversation_id)+'" data-conversation-account="'+esc(row.account_id)+'">'+
     '<span class="ce-avatar">'+(row.participant_picture?'<img src="'+esc(row.participant_picture)+'" alt="">':esc((row.participant_name||row.participant_username||'?').slice(0,1).toUpperCase()))+'</span>'+
     '<span class="ce-card-copy">'+
       '<span class="ce-card-line"><strong>'+esc(row.participant_name||row.participant_username||'Contacto')+'</strong><small>'+esc(dateLabel(row.last_activity_at))+'</small></span>'+
@@ -135,8 +135,9 @@ function threadMarkup(state,row){
     ['Pedir dato faltante','Identifica el dato mínimo que falta y redacta una sola pregunta.'],
     ['Resolver','Indica qué aparato debe resolver esta solicitud y qué necesita para hacerlo.']
   ];
-  return '<section class="ce-thread">'+
+  return '<section class="ce-thread" data-ce-thread-id="'+esc(id)+'">'+
     '<header class="ce-thread-head">'+
+     '<div class="ce-mobile-navigation"><button type="button" data-ce-back-list>← Conversaciones</button><button type="button" data-ce-open-intelligence>LINK ID · MAR ↗</button></div>'+
       '<div class="ce-thread-person"><span class="ce-avatar large">'+(row.participant_picture?'<img src="'+esc(row.participant_picture)+'" alt="">':esc((row.participant_name||row.participant_username||'?').slice(0,1).toUpperCase()))+'</span><div><strong>'+esc(row.participant_name||row.participant_username||'Contacto')+'</strong><small>'+esc(row.platform||'RRSS')+' · '+esc(row.account_username||'cuenta')+'</small></div></div>'+
       '<div class="ce-thread-actions"><button class="ce-translate-entry '+(translateOn?'active':'')+'" data-translate-dimension="'+esc(id)+'"><span>文</span>'+(translateOn?'Salir de Translate':'Dimensión Translate')+'</button><span class="ce-listener">ComunEscucha</span><label>Estado<select data-conversation-status="'+esc(id)+'"><option value="pending" '+(status==='pending'?'selected':'')+'>Por responder</option><option value="open" '+(status==='open'?'selected':'')+'>En curso</option><option value="resolved" '+(status==='resolved'?'selected':'')+'>Resuelta</option></select></label>'+(Number(row.unread_count||0)>0?'<button data-mark-read="'+esc(id)+'">Marcar leído</button>':'')+'</div>'+
     '</header>'+
@@ -146,14 +147,14 @@ function threadMarkup(state,row){
         ? messages.map((m,index)=>{const text=translateOn&&language!=='original'?(translated?.[language]?.[index]||m.text):m.text;return '<div class="ce-message '+(m.outgoing?'outgoing':'incoming')+'"><p>'+esc(text)+'</p>'+(translateOn&&language!=='original'?'<span class="ce-original-peek">Original · '+esc(m.text)+'</span>':'')+'<small>'+esc(dateLabel(m.date))+'</small></div>';}).join('')
         : '<div class="ce-loading"><strong>Hilo guardado</strong><span>'+esc(row.last_message||'Sin vista previa')+'</span><small>LINK abrirá el historial completo al seleccionar esta conversación.</small></div>')+
     '</div>'+
-    '<div class="ce-workbench">'+
+    '<details class="ce-workbench" '+(state.ceWorkbenchOpen?'open':'')+'><summary><span>✳</span><strong>Preparar con LINK</strong><small>Asistencia privada · no se envía al cliente</small><span class="ce-disclosure">⌄</span></summary><div class="ce-workbench-body">'+
       '<div class="ce-workbench-head"><div><span class="eyebrow">MESA DE TRABAJO</span><strong>Trabaja esta conversación con LINK</strong></div><span class="ce-specialist-mini">'+esc(row.specialist_name||'Especialista pendiente')+'</span></div>'+
       '<div class="ce-quick-actions">'+quick.map(([label,prompt])=>'<button data-ce-prompt="'+esc(prompt)+'">'+esc(label)+'</button>').join('')+'</div>'+
-      '<textarea id="ce-work-input" rows="2" placeholder="Escribe qué quieres resolver con esta conversación…"></textarea>'+
+      '<textarea id="ce-work-input" rows="2" placeholder="Escribe qué quieres resolver con esta conversación…">'+esc(state.conversationWorkDrafts?.[[state.business?.id,row.account_id,id].join(':')]||'')+'</textarea>'+
       '<div class="ce-workbench-note"><span>Esta caja prepara el trabajo del especialista; no envía nada al cliente todavía.</span><button id="ce-copy-work">Copiar instrucción</button></div>'+
-    '</div>'+
+    '</div></details>'+
     '<form class="ce-reply" data-reply-form="'+esc(id)+'">'+
-      '<label>Respuesta al cliente<textarea id="conversation-reply" rows="3" placeholder="Revisa o escribe la respuesta final…"></textarea></label>'+
+      '<label>Respuesta al cliente<textarea id="conversation-reply" rows="3" placeholder="Revisa o escribe la respuesta final…">'+esc(state.conversationDrafts?.[[state.business?.id,row.account_id,id].join(':')]||'')+'</textarea></label>'+
       '<div><small>Salida: '+esc(row.platform||'RRSS')+' mediante Zernio · requiere aprobación humana</small><button class="primary" type="submit">Enviar respuesta</button></div>'+
     '</form>'+
   '</section>';
@@ -225,8 +226,9 @@ function intelligenceMarkup(row){
   ];
 
   return '<aside class="ce-intelligence">'+
+    '<button type="button" class="ce-intelligence-close" data-ce-close-intelligence>← Volver al chat</button>'+
     '<div class="ce-side-title"><div><span class="eyebrow">COMUNESCUCHA</span><h2>Abstracción operativa</h2><p>Del hilo humano al estado accionable.</p></div><span class="ce-analysis-state '+esc(row.analysis_state||'queued')+'">'+esc(row.analysis_state==='ready'?'Listo':row.analysis_state==='manual_review'?'Revisar':'Procesando')+'</span></div>'+
-    '<section class="ce-abstraction-protocol">'+
+    '<details class="ce-analysis-details" '+(state.ceAnalysisOpen?'open':'')+'><summary>Interpretación completa <span>7 pasos</span></summary><section class="ce-abstraction-protocol">'+
       abstraction.map((item,index)=>'<article class="ce-abstraction-step '+esc(item.tone)+'">'+
         '<div class="ce-step-index">'+(index+1)+'</div>'+
         '<div class="ce-step-copy"><span class="ce-info-label">'+esc(item.key)+'</span><strong>'+esc(item.value)+'</strong>'+
@@ -235,7 +237,7 @@ function intelligenceMarkup(row){
           (item.chips?.length?'<div class="ce-chip-row">'+chips(item.chips,item.tone==='missing'||item.tone==='doubt'?'missing':item.tone==='intent'?'product':'')+'</div>':'')+
         '</div>'+
       '</article>').join('')+
-    '</section>'+
+    '</section></details>'+
     '<section class="ce-info-grid">'+
       '<div><span class="ce-info-label">ESTADO</span><strong>'+esc(attentionLabels[row.attention_state]||'Seguimiento')+'</strong></div>'+
       '<div><span class="ce-info-label">PRIORIDAD</span><strong>'+esc(String(row.priority??50))+'/100</strong></div>'+
@@ -296,29 +298,16 @@ export function comunEscuchaSection({state}){
   ];
 
   return '<section class="comunescucha-page">'+
-    '<header class="ce-hero">'+
-      '<div><span class="eyebrow">LINKRRSS / COMUNESCUCHA</span><h1>Conversaciones</h1><p>Escucha, ordena y enruta conversaciones de '+esc(state.business?.name||'este negocio')+'. La conversación original sigue siendo la evidencia.</p></div>'+
-      '<div class="ce-pulse"><span></span><div><strong>ComunEscucha activo</strong><small>evento → ficha → especialista</small></div></div>'+
-    '</header>'+
-    '<div class="ce-toolbar">'+
-      '<label class="ce-search"><span>⌕</span><input id="ce-search" value="'+esc(state.conversationQuery||'')+'" placeholder="Filtrar fichas por nombre, teléfono, tour o estado"></label>'+
-      '<select id="ce-channel"><option value="all">Todos los canales</option>'+channels.map(c=>'<option value="'+esc(c)+'" '+(state.conversationChannel===c?'selected':'')+'>'+esc(c[0].toUpperCase()+c.slice(1))+'</option>').join('')+'</select>'+
-      '<div class="ce-live-sync">'+
-        '<button id="ce-refresh" class="'+(state.inboxRefreshing?'refreshing':'')+'" '+(state.inboxRefreshing?'disabled':'')+'><span>↻</span>'+esc(refreshLabel)+'</button>'+
-        '<small><i></i>'+(lastSync?'Última sync '+esc(dateLabel(lastSync)):'Sin sincronizar aún')+' · auto 20 s</small>'+
-      '</div>'+
-      '<span class="ce-business-pill">'+esc(state.business?.name||'Negocio')+'</span>'+
-    '</div>'+
-    deepSearchMarkup(state)+
-    '<div class="ce-tabbar">'+tabs.map(([key,label,count])=>'<button data-ce-state="'+esc(key)+'" class="'+((state.conversationFilter||'all')===key?'active':'')+'"><span>'+esc(label)+'</span><b>'+count+'</b></button>').join('')+'</div>'+
-    '<div class="ce-panel-togglebar" role="group" aria-label="Distribución de ComunEscucha">'+
-      '<button type="button" data-ce-fold="list" aria-controls="ce-conversation-list" aria-pressed="false">☷ Conversaciones</button>'+
-      '<button type="button" data-ce-fold="intelligence" aria-controls="ce-intelligence-panel" aria-pressed="false">◈ Inteligencia</button>'+
-      '<button type="button" data-ce-fold="focus" aria-pressed="false">⛶ Vista libre</button>'+
-    '</div>'+
-    '<div class="comunescucha-shell">'+
-      '<aside class="ce-list" id="ce-conversation-list">'+
-        '<div class="ce-list-head"><div><strong>'+rows.length+' conversaciones</strong><small>ordenadas por atención y actividad</small></div><span>'+stats.reply+' por responder</span></div>'+
+    '<header class="ce-hero"><div class="ce-page-title"><span class="eyebrow">LINK WORLD / MAR / COMUNESCUCHA</span><h1>Conversaciones</h1><p>'+esc(state.business?.name||'Negocio')+' · Atención e inteligencia en un mismo lugar</p></div>'+
+      '<div class="ce-page-actions"><div class="ce-live-sync"><button type="button" id="ce-refresh" class="'+(state.inboxRefreshing?'refreshing':'')+'" '+(state.inboxRefreshing?'disabled':'')+'>↻ '+esc(refreshLabel)+'</button><small>'+(lastSync?'Actualizado '+esc(dateLabel(lastSync)):'Sin actualización reciente')+'</small></div>'+
+        '<div class="ce-panel-togglebar" role="group" aria-label="Distribución de ComunEscucha"><button type="button" data-ce-fold="list" aria-controls="ce-conversation-list" aria-pressed="false">☷ <span>Conversaciones</span></button><button type="button" data-ce-fold="intelligence" aria-controls="ce-intelligence-panel" aria-pressed="false">◈ <span>Inteligencia</span></button><button type="button" data-ce-fold="focus" aria-pressed="false">⛶ <span>Vista libre</span></button></div>'+
+      '</div></header>'+
+    '<details class="ce-deep-search-drawer" '+(state.ceDeepSearchOpen||state.conversationDeepSearchQuery?'open':'')+'><summary>⌕ Buscar dentro del historial de mensajes</summary>'+deepSearchMarkup(state)+'</details>'+
+    '<div class="comunescucha-shell '+(selected?'ce-mobile-thread ':'')+(state.ceMobileIntelligenceOpen?'ce-mobile-intelligence':'')+'">'+
+      '<aside class="ce-list" id="ce-conversation-list" aria-label="Bandeja de conversaciones">'+
+        '<div class="ce-list-head"><div><strong>Bandeja de entrada</strong><small>'+rows.length+' conversaciones · '+stats.reply+' por responder</small></div><span class="ce-live-indicator" title="Datos guardados">●</span></div>'+
+        '<div class="ce-toolbar"><label class="ce-search"><span aria-hidden="true">⌕</span><input id="ce-search" type="search" value="'+esc(state.conversationQuery||'')+'" placeholder="Buscar contacto o mensaje" aria-label="Buscar conversaciones"></label><select id="ce-channel" aria-label="Filtrar por canal"><option value="all">Todos los canales</option>'+channels.map(c=>'<option value="'+esc(c)+'" '+(state.conversationChannel===c?'selected':'')+'>'+esc(c[0].toUpperCase()+c.slice(1))+'</option>').join('')+'</select></div>'+
+        '<div class="ce-tabbar" role="group" aria-label="Filtrar por estado">'+tabs.map(([key,label,count])=>'<button type="button" data-ce-state="'+esc(key)+'" aria-pressed="'+((state.conversationFilter||'all')===key?'true':'false')+'" class="'+((state.conversationFilter||'all')===key?'active':'')+'"><span>'+esc(label)+'</span><b>'+count+'</b></button>').join('')+'</div>'+
         '<div class="ce-list-scroll">'+(rows.length?rows.map(r=>conversationCard(r,selected?.conversation_id===r.conversation_id)).join(''):'<div class="ce-list-empty">No hay conversaciones con estos filtros.</div>')+'</div>'+
       '</aside>'+
       '<div class="ce-resizer left" data-ce-resizer="left" role="separator" aria-label="Ajustar ancho de lista" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
@@ -326,6 +315,5 @@ export function comunEscuchaSection({state}){
       '<div class="ce-resizer right" data-ce-resizer="right" role="separator" aria-label="Ajustar ancho de inteligencia" title="Arrastra para cambiar el ancho · doble clic para restablecer"></div>'+
       intelligenceMarkup(selected).replace('class="ce-intelligence','id="ce-intelligence-panel" class="ce-intelligence')+
     '</div>'+
-    '<footer class="ce-flow"><span><b>1</b>LINK RRSS</span><i>→</i><span><b>2</b>LINK ID</span><i>→</i><span><b>3</b>MAR</span><i>→</i><span><b>4</b>Ciclo</span><i>→</i><span><b>5</b>Resolución</span><i>→</i><span><b>6</b>Evidencia</span></footer>'+
   '</section>';
 }
