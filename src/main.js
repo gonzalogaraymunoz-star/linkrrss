@@ -7,7 +7,7 @@ import { operationSection, bindOperation } from './operation.js';
 import { loadNotifications, startNotificationRealtime, notificationBell, bindNotifications } from './notifications.js';
 import { bootKaraokeRoute } from './karaoke.js';
 import { loadStudio, studioSection, bindStudio } from './studio.js';
-import { comunEscuchaSection } from './comunescucha.js';
+import { comunEscuchaSection, comunEscuchaListResults } from './comunescucha.js';
 import './comunescucha.css';
 import './mapa-shell.css';
 import './panel-fold.css';
@@ -1825,11 +1825,13 @@ function bind(){
   $('#metric-methodology')?.addEventListener('click',openMetricMethodology);
   document.querySelectorAll('[data-analytics-tab]').forEach(btn=>btn.onclick=()=>{state.analyticsTab=btn.dataset.analyticsTab;renderApp();});
   document.querySelectorAll('[data-analytics-sort]').forEach(btn=>btn.onclick=()=>{state.analyticsSort=btn.dataset.analyticsSort;renderApp();});
-  document.querySelectorAll('[data-conversation]').forEach(btn=>btn.onclick=()=>{
+  $('.ce-list-scroll')?.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-conversation]');
+    if(!btn)return;
     const accountId=btn.dataset.conversationAccount;
     if(accountId){
       const account=state.accounts.find(x=>x.id===accountId);
-      if(account) state.activeAccount=account;
+      if(account)state.activeAccount=account;
     }
     state.selectedConversationId=btn.dataset.conversation;
     state.ceMobileIntelligenceOpen=false;
@@ -1863,8 +1865,13 @@ function bind(){
   $('#ce-channel')?.addEventListener('change',e=>{state.conversationChannel=e.target.value||'all';renderApp();});
   $('#ce-search')?.addEventListener('input',e=>{
     state.conversationQuery=e.target.value||'';
-    renderApp();
-    const input=$('#ce-search'); if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+    const list=$('.ce-list-scroll');
+    if(!list)return;
+    const result=comunEscuchaListResults({state});
+    list.innerHTML=result.html;
+    list.scrollTop=0;
+    const count=$('[data-ce-list-count]');
+    if(count)count.textContent=String(result.count);
   });
   $('#ce-deep-search-form')?.addEventListener('submit',e=>{e.preventDefault();deepSearchConversations($('#ce-deep-search')?.value||'');});
   $('#ce-deep-search-clear')?.addEventListener('click',()=>{state.conversationDeepSearchQuery='';state.conversationDeepSearchResults=[];state.conversationDeepSearchError='';renderApp();});
