@@ -79,3 +79,32 @@ body.link-focus-mode .app-shell .mapa-map svg{max-height:430px}
 .mapa-map .mapa-map-legend span:nth-child(1)::before{background:#5a9ac1}
 .mapa-map .mapa-map-legend span:nth-child(2)::before{background:#e9a078}
 .mapa-map .mapa-map-legend span:nth-child(3)::before{background:#e79565}
+
+/* LINK 1.0 · Chatwoot-inspired interaction polish; no new runtime or data paths. */
+.comunescucha-shell{min-width:0;isolation:isolate}
+.comunescucha-shell>.ce-list,
+.comunescucha-shell>.ce-intelligence,
+.comunescucha-shell>.ce-thread{min-width:0;min-height:0}
+.comunescucha-shell .ce-message-thread{overscroll-behavior:contain;overflow-anchor:auto}
+.comunescucha-shell .ce-conversation-card{
+  transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease;
+}
+.comunescucha-shell .ce-conversation-card:focus-visible,
+.comunescucha-shell .ce-panel-togglebar button:focus-visible,
+.ce-panel-togglebar button:focus-visible{
+  outline:2px solid #3282a1!important;outline-offset:2px;
+}
+.comunescucha-shell .ce-conversation-card:hover{background-color:#f0f6f3}
+.comunescucha-shell .ce-conversation-card.active{box-shadow:inset 3px 0 0 #4d9eaa}
+.comunescucha-shell .ce-reply textarea{resize:vertical;min-height:72px;max-height:40vh}
+.comunescucha-shell .ce-reply button{min-height:40px}
+.comunescucha-shell .ce-thread{contain:layout style}
+@media(max-width:760px){
+ .comunescucha-shell .ce-thread{width:100%;min-width:0}
+ .comunescucha-shell .ce-message-thread{min-height:0}
+ .comunescucha-shell .ce-reply textarea{font-size:16px}
+ .ce-panel-togglebar button{font-size:11px;min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+ .comunescucha-shell .ce-conversation-card{transition:none!important}
+}
