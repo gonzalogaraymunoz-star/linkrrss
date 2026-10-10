@@ -10,8 +10,8 @@ if(!env.SUPABASE_URL||!env.SUPABASE_PUBLISHABLE_KEY)return send({error:'Configur
 
 if(path==='/api/public/flow'&&request.method==='GET'){
 const names=async endpoint=>{
- const r=await fetch(env.SUPABASE_URL+'/rest/v1/'+endpoint,{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+env.SUPABASE_PUBLISHABLE_KEY,Accept:'application/json'},redirect:'error'});
- if(!r.ok)throw Error('Supabase public flow unavailable');
+ const r=await fetch(env.SUPABASE_URL+'/rest/v1/'+endpoint,{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Accept:'application/json'},redirect:'error'});
+ if(!r.ok)throw Error('Supabase '+endpoint.split('?')[0]+' HTTP '+r.status);
  return r.json();
 };
 try{
@@ -23,7 +23,7 @@ const [businesses,flow,sites,profiles,links]=await Promise.all([
  names('link_commerce_public_links_v?select=*&limit=100')
 ]);
 return send({businesses,flow,sites,profiles,links});
-}catch{return send({error:'Vista pública no disponible'},503)}
+}catch(e){return send({error:'Vista pública no disponible',detail:String(e.message||e).slice(0,120)},503)}
 }
 
 async function readBody(){
