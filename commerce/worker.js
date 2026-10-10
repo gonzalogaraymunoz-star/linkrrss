@@ -16,7 +16,7 @@ const names=async endpoint=>{
 };
 try{
 const [businesses,flow,sites,profiles,links]=await Promise.all([
- names('link_world_businesses?select=id,name,slug,sector,website&order=name.asc&limit=100'),
+ names('link_commerce_public_businesses_v?select=id,name,slug,sector&order=name.asc&limit=100'),
  names('link_commerce_rrss_public_flow_v?select=*&order=business_name.asc&limit=100'),
  names('link_commerce_public_sites_v?select=*&limit=200'),
  names('link_commerce_public_profiles_v?select=*&limit=100'),
