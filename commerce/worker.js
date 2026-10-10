@@ -10,7 +10,7 @@ if(!env.SUPABASE_URL||!env.SUPABASE_PUBLISHABLE_KEY)return send({error:'Configur
 
 if(path==='/api/public/flow'&&request.method==='GET'){
 const names=async endpoint=>{
- const r=await fetch(env.SUPABASE_URL+'/rest/v1/'+endpoint,{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Accept:'application/json'},redirect:'error'});
+ const r=await fetch(env.SUPABASE_URL+'/rest/v1/'+endpoint,{headers:{apikey:env.SUPABASE_PUBLISHABLE_KEY,Accept:'application/json'},redirect:'manual'});
  if(!r.ok)throw Error('Supabase '+endpoint.split('?')[0]+' HTTP '+r.status);
  return r.json();
 };
@@ -35,7 +35,7 @@ async function supabase(endpoint,method,token,payload,prefer){
 const headers={'apikey':env.SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'};
 if(token)headers.Authorization='Bearer '+token;
 if(prefer)headers.Prefer=prefer;
-const r=await fetch(env.SUPABASE_URL+endpoint,{method,headers,body:payload===undefined?undefined:JSON.stringify(payload),redirect:'error'});
+const r=await fetch(env.SUPABASE_URL+endpoint,{method,headers,body:payload===undefined?undefined:JSON.stringify(payload),redirect:'manual'});
 const txt=await r.text();
 let data;try{data=txt?JSON.parse(txt):null}catch{data={message:'Respuesta no JSON de Supabase'}}
 if(!r.ok)throw Object.assign(new Error(data?.message||data?.msg||data?.error_description||'Error Supabase'),{status:r.status});
