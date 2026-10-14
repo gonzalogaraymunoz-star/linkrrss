@@ -76,6 +76,7 @@ const state = {
   conversationRequestCounter: 0,
   conversationSending: {},
   conversationSendFeedback: {},
+  conversationSendAttempts: {},
   translateDimension: false,
   translateLanguage: 'original',
   conversationTranslations: {},
@@ -2124,6 +2125,9 @@ async function selectConversation(conversationId,accountId){
   if(previousAccountId!==state.activeAccount?.id){
     delete state.conversationMessages[conversationId];
     delete state.conversationTranslations[conversationId];
+    delete state.conversationLoading[conversationId];
+    delete state.conversationMessageTokens[conversationId];
+    delete state.conversationSendFeedback[conversationId];
   }
   renderApp();
   if(!state.conversationMessages[conversationId]&&!state.conversationLoading[conversationId]){
@@ -2221,6 +2225,9 @@ async function sendConversationReply(conversationId){
   const message=box?.value?.trim();
   if(!source||!account||!businessId||!conversationId||!message||state.conversationSending[conversationId])return;
   const draftKey=[businessId,account.id,conversationId].join(':');
+  const priorAttempt=state.conversationSendAttempts[draftKey];
+  const attempt=priorAttempt?.message===message?priorAttempt:{message,key:'link-rrss-'+conversationId+'-'+Date.now()};
+  state.conversationSendAttempts[draftKey]=attempt;
   state.conversationSending[conversationId]=true;
   delete state.conversationSendFeedback[conversationId];
   renderApp();
@@ -2232,9 +2239,10 @@ async function sendConversationReply(conversationId){
       conversation_id:conversationId,
       account_id:account.external_account_id,
       message,
-      idempotency_key:'link-rrss-'+conversationId+'-'+Date.now()
+      idempotency_key:attempt.key
     });
     sent=true;
+    delete state.conversationSendAttempts[draftKey];
     if((state.conversationDrafts[draftKey]||'').trim()===message)delete state.conversationDrafts[draftKey];
     state.conversationSendFeedback[conversationId]={ok:true,text:'Respuesta enviada mediante Zernio.'};
   }catch(e){

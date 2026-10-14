@@ -100,3 +100,15 @@ test('muestra errores de envío sin perder el borrador',()=>{
   assert.match(html,/Error &lt;Zernio&gt;/);
   assert.match(html,/Texto &lt;sin enviar&gt; &amp; prueba/);
 });
+
+test('cada conversación conserva un borrador distinto por cuenta',()=>{
+  const state=makeState({
+    conversationDrafts:{
+      'biz-demo:account-demo:external-1':'Borrador de esta cuenta',
+      'biz-demo:otra-cuenta:external-1':'Borrador de otra cuenta'
+    }
+  });
+  const html=comunEscuchaSection({state});
+  assert.match(html,/Borrador de esta cuenta/);
+  assert.ok(!html.includes('Borrador de otra cuenta'));
+});
