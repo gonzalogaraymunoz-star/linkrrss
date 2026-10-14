@@ -646,12 +646,12 @@ function needsAutoSync(){
   if(!state.canManage||!state.sources.length||state.syncing)return false;
   return needsInboxSync()||needsContentSync();
 }
-async function maybeAutoSync(force=false){
+async function maybeAutoSync(force=false,scope='all'){
   if(!state.canManage||!state.business||!state.sources.length||state.syncing)return;
   const businessId=state.business.id;
   const accountId=state.activeAccount?.id||null;
-  const inboxDue=force||needsInboxSync();
-  const contentDue=Boolean(accountId)&&(force||needsContentSync());
+  const inboxDue=scope!=='content'&&(force||needsInboxSync());
+  const contentDue=scope!=='inbox'&&Boolean(accountId)&&(force||needsContentSync());
   if(!inboxDue&&!contentDue)return;
   state.syncing=true;
   renderApp();
@@ -672,8 +672,12 @@ async function maybeAutoSync(force=false){
     if(state.business?.id!==businessId)return;
     await loadBusiness({restore:false});
     const failures=results.filter(x=>x.status==='rejected');
-    if(failures.length)toast('Actualización incompleta: '+failures.map(x=>x.reason?.message||String(x.reason)).join(' · '),true);
-    else if(force)toast('Contenido y conversaciones consultados con Zernio.');
+    const partials=results.filter(x=>x.status==='fulfilled'&&x.value?.summary?.errors?.length);
+    if(failures.length||partials.length){
+      const reasons=failures.map(x=>x.reason?.message||String(x.reason));
+      if(partials.length)reasons.push('El proveedor devolvió errores parciales; revisa el estado de cada módulo.');
+      toast('Actualización incompleta: '+reasons.join(' · '),true);
+    }else if(force)toast(inboxDue&&contentDue?'Contenido y conversaciones consultados con Zernio.':contentDue?'Contenido y métricas consultados con Zernio.':'Conversaciones consultadas con Zernio.');
   }catch(e){
     toast('No se pudo cargar la actualización: '+(e.message||String(e)),true);
   }finally{
@@ -1836,9 +1840,9 @@ function bind(){
   document.querySelectorAll('[data-draft-approve]').forEach(btn=>btn.onclick=()=>openPublicationDraftApproval(btn.dataset.draftApprove));
   document.querySelectorAll('[data-draft-cancel]').forEach(btn=>btn.onclick=()=>cancelPublicationDraft(btn.dataset.draftCancel));
   $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
-  $('#refresh-content')?.addEventListener('click',()=>maybeAutoSync(true));
+  $('#refresh-content')?.addEventListener('click',()=>maybeAutoSync(true,'content'));
   document.querySelectorAll('[data-post-thumbnail]').forEach(img=>{
-    const failed=()=>{const wrapper=img.closest('.post-media');if(wrapper)wrapper.innerHTML='<div class="post-media-fallback">Vista previa no disponible · imagen temporal vencida</div>';};
+    const failed=()=>{const wrapper=img.closest('.post-media');if(wrapper)wrapper.innerHTML='<div class="post-media-fallback">Vista previa no disponible · enlace externo</div>';};
     img.addEventListener('error',failed,{once:true});
     if(img.complete&&img.naturalWidth===0)failed();
   });
