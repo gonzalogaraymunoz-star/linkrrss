@@ -1,3 +1,4 @@
+import { contentRefreshDue, snapshotExpired, snapshotLabel } from './sync-freshness.js';
 import { createClient } from '@supabase/supabase-js';
 import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LINK_WORLD_URL } from './connection.js';
@@ -85,6 +86,8 @@ const state = {
   lastInboxRefreshAt: null,
   inboxPollTimer: null,
   inboxPollKey: null,
+  contentPollTimer: null,
+  contentSyncAttempts: new Map(),
   lastLoadedPanelKey: null,
   conversationControl: [],
   conversationFilter: 'all',
@@ -602,10 +605,20 @@ function socialActivityRows(){
   return rows.filter(x=>inPeriod(x.occurred_at)).sort((a,b)=>new Date(b.occurred_at)-new Date(a.occurred_at));
 }
 
+function syncModuleForSection(){
+  return state.section==='content'?'content':state.section==='analytics'?'analytics':'inbox';
+}
+function syncTimestamp(){
+  return snapshotFor(syncModuleForSection())?.fetched_at||null;
+}
 function syncStateLabel(){
   if(state.syncing)return 'Sincronizando';
+  const module=syncModuleForSection();
+  const snap=snapshotFor(module);
+  if(module==='content'||module==='analytics')return snapshotLabel(snap);
+  if(snap)return snapshotExpired(snap)?'Mensajes desactualizados':snapshotLabel(snap);
   const s=state.workspace?.last_sync_status||'idle';
-  return ({ok:'Al día',partial:'Parcial',error:'Error',syncing:'Sincronizando',idle:'Sin sincronizar'})[s]||s;
+  return ({ok:'Mensajes sin verificar',partial:'Parcial',error:'Error',syncing:'Sincronizando',idle:'Sin sincronizar'})[s]||s;
 }
 async function persistWorkspace(){
   if(!state.canManage||!state.business)return;
@@ -619,31 +632,53 @@ async function persistWorkspace(){
     });
   }catch{}
 }
+function needsInboxSync(){
+  return snapshotExpired(snapshotFor('inbox'));
+}
+function needsContentSync(){
+  if(!state.activeAccount)return false;
+  const key=[state.business?.id,state.activeAccount.id].join(':');
+  return contentRefreshDue(snapshotFor('content'),snapshotFor('analytics'),{
+    lastAttempt:state.contentSyncAttempts.get(key)||0
+  });
+}
 function needsAutoSync(){
   if(!state.canManage||!state.sources.length||state.syncing)return false;
-  const last=state.workspace?.last_sync_started_at||state.workspace?.last_full_sync_at;
-  if(!last)return true;
-  const minutes=Number(state.workspace?.sync_interval_minutes||5);
-  return Date.now()-new Date(last).getTime()>minutes*60000;
+  return needsInboxSync()||needsContentSync();
 }
 async function maybeAutoSync(force=false){
   if(!state.canManage||!state.business||!state.sources.length||state.syncing)return;
-  if(!force && !needsAutoSync())return;
+  const businessId=state.business.id;
+  const accountId=state.activeAccount?.id||null;
+  const inboxDue=force||needsInboxSync();
+  const contentDue=Boolean(accountId)&&(force||needsContentSync());
+  if(!inboxDue&&!contentDue)return;
   state.syncing=true;
   renderApp();
+  const jobs=[];
+  if(inboxDue)jobs.push(invokeZernio({
+    action:'pulse.sync',business_id:businessId,trigger:force?'pulse_manual':'pulse_auto'
+  }));
+  if(contentDue){
+    const key=[businessId,accountId].join(':');
+    state.contentSyncAttempts.set(key,Date.now());
+    jobs.push(invokeZernio({
+      action:'sync.content',business_id:businessId,account_id:accountId,
+      trigger:force?'content_manual':'content_auto'
+    }));
+  }
   try{
-    await invokeZernio({
-      action:'pulse.sync',
-      business_id:state.business.id,
-      trigger:force?'pulse_manual':'pulse_auto'
-    });
+    const results=await Promise.allSettled(jobs);
+    if(state.business?.id!==businessId)return;
     await loadBusiness({restore:false});
+    const failures=results.filter(x=>x.status==='rejected');
+    if(failures.length)toast('Actualización incompleta: '+failures.map(x=>x.reason?.message||String(x.reason)).join(' · '),true);
+    else if(force)toast('Contenido y conversaciones consultados con Zernio.');
   }catch(e){
-    state.syncing=false;
-    toast(e.message||String(e),true);
-    await loadBusiness({restore:false});
+    toast('No se pudo cargar la actualización: '+(e.message||String(e)),true);
   }finally{
     state.syncing=false;
+    if(state.business?.id===businessId)renderApp();
   }
 }
 
@@ -785,7 +820,7 @@ function topbar(){
         <span class="health-pill ${statusDot(st.rrss_status)}"><span></span>${safe(statusLabel(st.rrss_status))}</span>
         ${notificationBell(state)}
         <button class="icon-btn map-focus-btn" id="focus-toggle" type="button" aria-label="Alternar vista libre" aria-pressed="${isFocusMode()}" title="Vista libre · aprovechar toda la pantalla">⛶</button>
-        <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Actualizar conversaciones · sincronización ligera"><i data-lucide="refresh-cw"></i></button>
+        <button class="icon-btn ${state.syncing?'spin':''}" id="refresh" title="Actualizar publicaciones, métricas y conversaciones"><i data-lucide="refresh-cw"></i></button>
       </div>
     </header>`;
 }
@@ -1283,7 +1318,8 @@ function openPublicationDraftApproval(draftId){
 function contentSection(){
   if(!state.activeAccount) return noAccounts('Contenido');
   const snap=snapshotFor('content');
-  if(snap?.status==='blocked'||snap?.status==='error') return `<section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1></div></section>${issuePanel('Contenido no disponible',snap)}`;
+  const freshness=snapshotLabel(snap);
+  const freshnessWarning=(freshness==='Al día'||freshness==='Sin novedades')?'':`<div class="content-stale-note" role="status"><strong>${safe(freshness)}</strong><span>Mostrando publicaciones guardadas. Actualiza para consultar nuevos contenidos y renovar las miniaturas disponibles.</span><button type="button" id="refresh-content">↻ Actualizar contenido</button></div>`;
   const rows=filteredPosts();
   const all=contentRows().map(normalizePost);
   const erMedian=median(all.map(p=>p.engagementRate).filter(x=>x>0));
@@ -1291,7 +1327,7 @@ function contentSection(){
     const engagement=postEngagement(p);
     const benchmark=p.engagementRate>0&&erMedian>0?(p.engagementRate>=erMedian?'Sobre mediana':'Bajo mediana'):'Sin base';
     return `<article class="post-card rich-post post-open" data-post-open="${safe(p.id)}" tabindex="0">
-      ${p.image?'<div class="post-media"><img src="'+safe(p.image)+'" alt=""></div>':''}
+      <div class="post-media">${p.image?'<img data-post-thumbnail src="'+safe(p.image)+'" alt="Miniatura de publicación" loading="lazy" referrerpolicy="no-referrer">':'<div class="post-media-fallback">Vista previa no disponible</div>'}</div>
       <div class="post-card-body">
         <div class="post-meta"><span>${safe(p.mediaType)}</span><small>${safe(fmtDate(p.date))}</small></div>
         <p>${safe(String(p.text).slice(0,360))}</p>
@@ -1306,7 +1342,8 @@ function contentSection(){
     </article>`;
   }).join(''):emptyMemory('Sin publicaciones en este periodo','Cambia el filtro o sincroniza la cuenta para ampliar la memoria.');
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><div class="content-heading-actions">${state.canManage&&state.activeAccount?.can_post!==false?'<button class="primary" id="new-post">＋ Publicación manual</button>':''}<span class="freshness">${safe(snap?ago(snap.fetched_at):'Pendiente')}</span></div></section>
+    <section class="section-heading compact"><div><span class="eyebrow">CONTENIDO / ${safe(state.activeAccount.platform.toUpperCase())}</span><h1>Publicaciones</h1><p>Cada pieza es una ficha medible: contenido, alcance, retención, interacción y aprendizaje.</p></div><div class="content-heading-actions">${state.canManage&&state.activeAccount?.can_post!==false?'<button class="primary" id="new-post">＋ Publicación manual</button>':''}<span class="freshness">${safe(freshness)} · ${safe(snap?ago(snap.fetched_at):'sin fecha')}</span></div></section>
+    ${freshnessWarning}
     ${publicationQueueMarkup()}
     <div id="content-live" class="content-grid">${body}</div>`;
 }
@@ -1610,7 +1647,7 @@ function activitySection(){
   const typeLabel={message:'Mensaje',comment:'Comentario',publication:'Publicación',engagement:'Interacción'};
   const counts=allRows.reduce((a,x)=>(a[x.activity_type]=(a[x.activity_type]||0)+1,a),{});
   return `
-    <section class="section-heading compact"><div><span class="eyebrow">ACTIVIDAD / ZERNIO + REDES</span><h1>Qué está pasando afuera</h1><p>Mensajes, comentarios, publicaciones e interacción social. No registramos clics internos de la app como si fueran actividad del negocio.</p></div><span class="freshness">${safe(ago(state.workspace?.last_full_sync_at))}</span></section>
+    <section class="section-heading compact"><div><span class="eyebrow">ACTIVIDAD / ZERNIO + REDES</span><h1>Qué está pasando afuera</h1><p>Mensajes, comentarios, publicaciones e interacción social. No registramos clics internos de la app como si fueran actividad del negocio.</p></div><span class="freshness">${safe(ago(syncTimestamp()))}</span></section>
     <div class="activity-filter">
       ${[['all','Todo'],['message','Mensajes'],['comment','Comentarios'],['publication','Publicaciones'],['engagement','Interacción']].map(([id,label])=>'<button data-activity-type="'+id+'" class="'+(state.activityType===id?'active':'')+'">'+label+(id!=='all'&&counts[id]?' · '+counts[id]:'')+'</button>').join('')}
     </div>
@@ -1743,6 +1780,7 @@ function renderApp(){
     }
   }
   configureInboxPolling();
+  configureContentPolling();
   document.dispatchEvent(new Event('linkrrss:rendered'));
   const panelKey=[state.business?.id||'',state.section,state.activeAccount?.id||''].join(':');
   if(state.lastLoadedPanelKey!==panelKey){
@@ -1798,6 +1836,12 @@ function bind(){
   document.querySelectorAll('[data-draft-approve]').forEach(btn=>btn.onclick=()=>openPublicationDraftApproval(btn.dataset.draftApprove));
   document.querySelectorAll('[data-draft-cancel]').forEach(btn=>btn.onclick=()=>cancelPublicationDraft(btn.dataset.draftCancel));
   $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
+  $('#refresh-content')?.addEventListener('click',()=>maybeAutoSync(true));
+  document.querySelectorAll('[data-post-thumbnail]').forEach(img=>{
+    const failed=()=>{const wrapper=img.closest('.post-media');if(wrapper)wrapper.innerHTML='<div class="post-media-fallback">Vista previa no disponible · imagen temporal vencida</div>';};
+    img.addEventListener('error',failed,{once:true});
+    if(img.complete&&img.naturalWidth===0)failed();
+  });
   $('#logout')?.addEventListener('click',()=>db.auth.signOut().then(()=>loadBase()));
   $('#back-world')?.addEventListener('click',()=>{
     const u=new URL(LINK_WORLD_URL);
@@ -2058,6 +2102,14 @@ function bindComunEscuchaResizers(){
       try{localStorage.setItem(key,JSON.stringify(saved));}catch{}
     };
   });
+}
+
+function configureContentPolling(){
+  if(state.contentPollTimer)return;
+  state.contentPollTimer=setInterval(()=>{
+    if(document.hidden||state.syncing||!state.canManage||!state.business)return;
+    if(['content','analytics','home'].includes(state.section))void maybeAutoSync(false);
+  },5*60*1000);
 }
 
 function configureInboxPolling(){
