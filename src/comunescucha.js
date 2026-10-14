@@ -45,7 +45,7 @@ function normalizeMessages(payload){
   const list=Array.isArray(payload)?payload:(payload?.data||payload?.messages||[]);
   if(!Array.isArray(list)) return [];
   return list.map(m=>({
-    outgoing:Boolean(m.outgoing??m.isOutgoing??m.direction==='outgoing'??m.fromMe),
+    outgoing:Boolean(m.outgoing??m.isOutgoing??m.fromMe??(m.direction==='outgoing')),
     text:m.text||m.message||m.content||m.body||'[Adjunto]',
     date:m.createdAt||m.createdTime||m.timestamp||m.sentAt||m.platform_created_at||m.created_at||null
   })).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
@@ -136,6 +136,9 @@ function threadMarkup(state,row){
   const id=String(row.external_conversation_id);
   const messages=normalizeMessages(state.conversationMessages?.[id]);
   const loading=state.conversationLoading?.[id];
+  const error=state.conversationMessages?.[id]?.error;
+  const sending=Boolean(state.conversationSending?.[id]);
+  const sendFeedback=state.conversationSendFeedback?.[id];
   const translating=state.translationLoading?.[id];
   const translateOn=Boolean(state.translateDimension);
   const language=state.translateLanguage||'original';
@@ -156,7 +159,7 @@ function threadMarkup(state,row){
     '</header>'+
     (translateOn?'<div class="ce-translate-dimension"><div><span class="eyebrow">LINK · TRANSLATE</span><strong>Dimensión de traducción</strong><small>La evidencia original se conserva. Cambia de idioma sin salir del hilo.</small></div><div class="ce-language-tabs">'+['original','es','pt','en'].map(lang=>'<button data-translate-lang="'+lang+'" class="'+(language===lang?'active':'')+'">'+({original:'Original',es:'ES',pt:'PT',en:'EN'}[lang])+'</button>').join('')+'</div><span class="ce-translate-state">'+(translating?'Traduciendo…':languageLabel)+'</span></div>':'')+
     '<div class="ce-message-thread '+(translateOn?'translate-mode':'')+'">'+
-      (loading?'<div class="ce-loading">Recuperando hilo…</div>':messages.length
+      (loading?'<div class="ce-loading" role="status">Recuperando hilo…</div>':error?'<div class="ce-loading ce-thread-error" role="alert"><strong>No se pudo recuperar el historial</strong><span>'+esc(error)+'</span><button type="button" data-ce-retry-messages="'+esc(id)+'">Reintentar carga</button></div>':messages.length
         ? messages.map((m,index)=>{const text=translateOn&&language!=='original'?(translated?.[language]?.[index]||m.text):m.text;return '<div class="ce-message '+(m.outgoing?'outgoing':'incoming')+'"><p>'+esc(text)+'</p>'+(translateOn&&language!=='original'?'<span class="ce-original-peek">Original · '+esc(m.text)+'</span>':'')+'<small>'+esc(dateLabel(m.date))+'</small></div>';}).join('')
         : '<div class="ce-loading"><strong>Hilo guardado</strong><span>'+esc(row.last_message||'Sin vista previa')+'</span><small>LINK abrirá el historial completo al seleccionar esta conversación.</small></div>')+
     '</div>'+
@@ -168,7 +171,8 @@ function threadMarkup(state,row){
     '</div></details>'+
     '<form class="ce-reply" data-reply-form="'+esc(id)+'">'+
       '<label>Respuesta al cliente<textarea id="conversation-reply" rows="3" placeholder="Revisa o escribe la respuesta final…">'+esc(state.conversationDrafts?.[[state.business?.id,row.account_id,id].join(':')]||'')+'</textarea></label>'+
-      '<div><small>Salida: '+esc(row.platform||'RRSS')+' mediante Zernio · requiere aprobación humana</small><button class="primary" type="submit">Enviar respuesta</button></div>'+
+      '<div><small>Salida: '+esc(row.platform||'RRSS')+' mediante Zernio · requiere aprobación humana</small><button class="primary" type="submit" '+(sending?'disabled aria-busy="true"':'')+'>'+(sending?'Enviando…':'Enviar respuesta')+'</button></div>'+ 
+      (sendFeedback?'<p class="ce-send-feedback '+(sendFeedback.ok?'success':'error')+'" role="status">'+esc(sendFeedback.text)+'</p>':'')+
     '</form>'+
   '</section>';
 }
