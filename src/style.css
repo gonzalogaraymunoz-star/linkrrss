@@ -692,3 +692,10 @@ body.sidebar-collapsed .sidebar .status-dot{position:absolute;right:4px;top:20px
   body.sidebar-collapsed .app-shell{grid-template-columns:1fr!important}
   .sidebar-collapse-btn{display:none}
 }
+
+/* Frescura por módulo y miniaturas temporales de Instagram */
+.content-stale-note{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;margin:0 0 14px;border:1px solid #DCD6C6;border-radius:12px;background:#F7F4EC;color:#454942;font-size:11px;line-height:1.5}
+.content-stale-note strong{font-weight:700;color:#8B6130}
+.content-stale-note span{flex:1;min-width:200px}
+.content-stale-note button{border:1px solid #C8C7BE;background:#fff;padding:8px 12px;border-radius:9px;cursor:pointer;color:#27332D;font-size:11px;font-weight:600}
+.post-media-fallback{height:100%;min-height:150px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#EFEDEA;color:#77776F;font-size:11px;letter-spacing:.01em}

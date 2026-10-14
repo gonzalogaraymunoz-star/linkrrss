@@ -483,6 +483,217 @@ async function safeFetch(apiKey: string, path: string, query: Record<string, unk
   return { ok: false, data: null, error: errorInfo(lastError) };
 }
 
+
+async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
+  const startedAt=new Date().toISOString();
+  await admin.from("link_rrss_workspace_state").upsert({
+    business_id:businessId,last_sync_started_at:startedAt,last_sync_status:"syncing",last_sync_error:null,updated_at:startedAt
+  },{onConflict:"business_id"});
+
+  const {data:run,error:runError}=await admin.from("link_rrss_sync_runs").insert({
+    business_id:businessId,trigger,status:"running",modules:["inbox","inbox_messages"],started_at:startedAt
+  }).select("id").single();
+  if(runError) throw runError;
+
+  const summary:any={sources:0,accounts:0,conversations_seen:0,conversations_changed:0,conversations_unchanged:0,message_fetches:0,messages_synced:0,incoming:0,outgoing:0,unknown:0,errors:[]};
+  let sourceForRun:string|null=null;
+
+  try {
+    const {data:profiles,error:profileError}=await admin.from("link_rrss_profiles").select("id").eq("business_id",businessId);
+    if(profileError) throw profileError;
+    const profileIds=(profiles||[]).map((x:any)=>x.id);
+
+    if(!profileIds.length){
+      const finished=new Date().toISOString();
+      await admin.from("link_rrss_sync_runs").update({status:"ok",summary:{...summary,note:"Sin perfil RRSS"},finished_at:finished}).eq("id",run.id);
+      await admin.from("link_rrss_workspace_state").update({last_sync_status:"ok",last_sync_error:null,updated_at:finished}).eq("business_id",businessId);
+      return summary;
+    }
+
+    const {data:sources,error:sourceError}=await admin.from("link_rrss_sources").select("id,profile_id,external_profile_id,label").in("profile_id",profileIds);
+    if(sourceError) throw sourceError;
+    summary.sources=(sources||[]).length;
+
+    for(const s of (sources||[])){
+      sourceForRun=s.id;
+      const {apiKey}=await readSourceSecret(admin,s.id);
+      const {data:accounts,error:accountError}=await admin.from("link_rrss_accounts").select("*").eq("source_id",s.id).eq("status","connected").order("platform");
+      if(accountError) throw accountError;
+      summary.accounts+=(accounts||[]).length;
+
+      for(const a of (accounts||[])){
+        const inbox=await safeFetch(apiKey,"/v1/inbox/conversations",{accountId:a.external_account_id,platform:a.platform,limit:100,sortOrder:"desc"});
+        if(!inbox.ok){
+          summary.errors.push({module:"inbox",account:a.username,error:inbox.error});
+          continue;
+        }
+
+        const conversations=rows(inbox.data,["conversations"]);
+        summary.conversations_seen+=conversations.length;
+
+        const {data:existingRows,error:existingError}=await admin
+          .from("link_rrss_conversations")
+          .select("id,external_conversation_id,last_message,last_message_at,unread_count")
+          .eq("account_id",a.id);
+        if(existingError) throw existingError;
+
+        const existingByExternal=new Map((existingRows||[]).map((row:any)=>[String(row.external_conversation_id),row]));
+        const changed=conversations.filter((c:any)=>{
+          const externalId=String(c?.id || c?._id || "");
+          if(!externalId) return false;
+          const old:any=existingByExternal.get(externalId);
+          if(!old) return true;
+          const stamp=String(c?.updatedTime || c?.updatedAt || c?.lastMessageAt || "");
+          const text=String(typeof c?.lastMessage==="string" ? c.lastMessage : (c?.lastMessage?.text || c?.lastMessageText || c?.preview || ""));
+          const oldStamp=old?.last_message_at ? new Date(old.last_message_at).toISOString() : "";
+          const newStamp=stamp ? new Date(stamp).toISOString() : "";
+          return oldStamp!==newStamp || String(old?.last_message || "")!==text || Number(old?.unread_count || 0)!==Number(c?.unreadCount || 0);
+        });
+
+        summary.conversations_changed+=changed.length;
+        summary.conversations_unchanged+=Math.max(0,conversations.length-changed.length);
+
+        const persisted=await persistConversations(admin,a,conversations);
+        const localByExternal=new Map((persisted.rows||[]).map((row:any)=>[String(row.external_conversation_id),String(row.id)]));
+
+        const inboxBatchSize=String(a.platform||"").toLowerCase()==="whatsapp"?2:4;
+        const inboxBatchPauseMs=String(a.platform||"").toLowerCase()==="whatsapp"?350:100;
+        for(let i=0;i<changed.length;i+=inboxBatchSize){
+          const batch=changed.slice(i,i+inboxBatchSize);
+          await Promise.all(batch.map(async(c:any)=>{
+            const externalConversationId=String(c?.id || c?._id || "");
+            const localConversationId=localByExternal.get(externalConversationId);
+            if(!externalConversationId || !localConversationId) return;
+
+            const stamp=String(c?.updatedTime || c?.updatedAt || c?.lastMessageAt || "");
+            if(stamp){
+              await cacheActivity(admin,{
+                accountId:a.id,activityType:"message",externalId:externalConversationId+":"+stamp,occurredAt:stamp,
+                payload:{
+                  conversation_id:externalConversationId,participant_id:c?.participantId || null,
+                  participant_name:c?.participantName || c?.participantUsername || c?.username || "Contacto",
+                  participant_username:c?.participantUsername || c?.username || null,
+                  participant_picture:c?.participantPicture || null,
+                  message:typeof c?.lastMessage==="string" ? c.lastMessage : (c?.lastMessage?.text || c?.lastMessageText || c?.preview || ""),
+                  unread_count:Number(c?.unreadCount || 0),status:c?.status || "active",url:c?.url || null,raw:c || {}
+                }
+              });
+            }
+
+            summary.message_fetches++;
+            const history=await safeFetch(apiKey,`/v1/inbox/conversations/${encodeURIComponent(externalConversationId)}/messages`,{accountId:a.external_account_id,limit:50,sortOrder:"desc"});
+            if(!history.ok){
+              summary.errors.push({module:"inbox_messages",account:a.username,conversation:externalConversationId,error:history.error});
+              return;
+            }
+            const saved=await persistMessages(admin,localConversationId,rows(history.data,["messages"]));
+            summary.messages_synced+=saved.count;
+            summary.incoming+=saved.incoming;
+            summary.outgoing+=saved.outgoing;
+            summary.unknown+=saved.unknown;
+          }));
+          if(i+inboxBatchSize<changed.length) await sleep(inboxBatchPauseMs);
+        }
+
+        await cacheSnapshot(admin,{
+          businessId,sourceId:s.id,accountId:a.id,module:"inbox",
+          payload:{conversations_seen:conversations.length,conversations_changed:changed.length,message_fetches:changed.length,incremental:true},
+          status:summary.errors.length?"partial":"ok",
+          error:summary.errors.length?JSON.stringify(summary.errors.slice(-5)):null,
+          ttlMinutes:5
+        });
+        await refreshAccountMemory(admin,a.id);
+      }
+    }
+
+    const finished=new Date().toISOString();
+    const partial=summary.errors.length>0;
+    await admin.from("link_rrss_sync_runs").update({source_id:sourceForRun,status:partial?"partial":"ok",summary,finished_at:finished}).eq("id",run.id);
+    await admin.from("link_rrss_workspace_state").upsert({
+      business_id:businessId,last_sync_status:partial?"partial":"ok",last_sync_error:partial?JSON.stringify(summary.errors):null,updated_at:finished
+    },{onConflict:"business_id"});
+    return summary;
+  } catch(error:any){
+    const finished=new Date().toISOString();
+    const info=errorInfo(error);
+    await admin.from("link_rrss_sync_runs").update({source_id:sourceForRun,status:"error",error:JSON.stringify(info),summary,finished_at:finished}).eq("id",run.id);
+    await admin.from("link_rrss_workspace_state").upsert({
+      business_id:businessId,last_sync_status:"error",last_sync_error:JSON.stringify(info),updated_at:finished
+    },{onConflict:"business_id"});
+    throw error;
+  }
+}
+
+// Actualización incremental de publicaciones: no recorre hilos de mensajes.
+// Solo se permiten cuentas conectadas que pertenezcan al negocio solicitado.
+async function contentSync(admin:any,businessId:string,requestedAccountId:string|null,trigger="content_auto"){
+  const {data:profiles,error:profileError}=await admin.from("link_rrss_profiles")
+    .select("id").eq("business_id",businessId);
+  if(profileError)throw profileError;
+  const profileIds=(profiles||[]).map((p:any)=>p.id);
+  if(!profileIds.length)throw Object.assign(new Error("Negocio sin perfil RRSS."),{status:404});
+  const {data:sources,error:sourceError}=await admin.from("link_rrss_sources")
+    .select("id").in("profile_id",profileIds);
+  if(sourceError)throw sourceError;
+  const sourceIds=(sources||[]).map((s:any)=>s.id);
+  if(!sourceIds.length)throw Object.assign(new Error("Negocio sin fuente Zernio."),{status:404});
+  let query=admin.from("link_rrss_accounts").select("*")
+    .in("source_id",sourceIds).eq("status","connected");
+  if(requestedAccountId)query=query.eq("id",requestedAccountId);
+  const {data:accounts,error:accountError}=await query;
+  if(accountError)throw accountError;
+  if(!accounts?.length)throw Object.assign(new Error("No hay una cuenta conectada para actualizar contenido."),{status:404});
+  const startedAt=new Date().toISOString();
+  const {data:run,error:runError}=await admin.from("link_rrss_sync_runs").insert({
+    business_id:businessId,trigger,status:"running",modules:["content","analytics"],
+    started_at:startedAt
+  }).select("id").single();
+  if(runError)throw runError;
+  const summary:any={accounts:accounts.length,content_posts:0,analytics_posts:0,errors:[]};
+  try{
+    for(const account of accounts){
+      const {apiKey}=await readSourceSecret(admin,account.source_id);
+      const [content,analytics]=await Promise.all([
+        safeFetch(apiKey,"/v1/accounts/"+encodeURIComponent(account.external_account_id)+"/posts",{limit:50}),
+        safeFetch(apiKey,"/v1/analytics",{accountId:account.external_account_id,platform:account.platform})
+      ]);
+      const contentRows=content.ok?rows(content.data,["posts"]):[];
+      const analyticsRows=analytics.ok?rows(analytics.data,["posts"]):[];
+      // Primero analítica, luego contenido: la URL de miniatura más reciente gana.
+      if(analytics.ok){
+        const saved=await persistPosts(admin,account,analyticsRows);
+        summary.analytics_posts+=saved.count;
+      }else summary.errors.push({module:"analytics",account:account.username,error:analytics.error});
+      if(content.ok){
+        const saved=await persistPosts(admin,account,contentRows);
+        summary.content_posts+=saved.count;
+      }else summary.errors.push({module:"content",account:account.username,error:content.error});
+      await cacheSnapshot(admin,{
+        businessId,sourceId:account.source_id,accountId:account.id,module:"content",
+        payload:content.data||{},status:content.ok?(contentRows.length?"ok":"empty"):(content.error?.status===403?"blocked":"error"),
+        error:content.ok?null:JSON.stringify(content.error),ttlMinutes:10
+      });
+      await cacheSnapshot(admin,{
+        businessId,sourceId:account.source_id,accountId:account.id,module:"analytics",
+        payload:analytics.data||{},status:analytics.ok?"ok":(analytics.error?.status===403?"blocked":"error"),
+        error:analytics.ok?null:JSON.stringify(analytics.error),ttlMinutes:10
+      });
+    }
+    const finished=new Date().toISOString();
+    await admin.from("link_rrss_sync_runs").update({
+      status:summary.errors.length?"partial":"ok",summary,
+      source_id:accounts[0].source_id,finished_at:finished
+    }).eq("id",run.id);
+    return summary;
+  }catch(error:any){
+    await admin.from("link_rrss_sync_runs").update({
+      status:"error",summary,error:JSON.stringify(errorInfo(error)),
+      finished_at:new Date().toISOString()
+    }).eq("id",run.id);
+    throw error;
+  }
+}
+
 async function fullSync(admin: any, businessId: string, trigger = "app_open") {
   const now = new Date().toISOString();
   await admin.from("link_rrss_workspace_state").upsert({
@@ -799,27 +1010,62 @@ Deno.serve(async (req: Request) => {
         profile=inserted.data;
       }
 
-      const secretResult = await admin.rpc("link_rrss_store_secret", {
-        p_secret:apiKey,
-        p_name:`link-rrss-zernio-${business.slug}-${crypto.randomUUID()}`,
-        p_description:`Zernio credential for ${business.name}`
-      });
-      if (secretResult.error || !secretResult.data) throw secretResult.error || new Error("No se pudo guardar la credencial.");
+      const existingResult = await admin.from("link_rrss_sources")
+        .select("id,vault_secret_id")
+        .eq("profile_id",profile.id)
+        .eq("provider","zernio")
+        .eq("external_profile_id",externalProfileId)
+        .maybeSingle();
+      if (existingResult.error) throw existingResult.error;
 
-      const sourceInsert = await admin.from("link_rrss_sources").insert({
-        profile_id:profile.id,provider:"zernio",label,
-        vault_secret_id:secretResult.data,status:"configuring",
+      let sourceId = existingResult.data?.id || null;
+      let vaultSecretId = existingResult.data?.vault_secret_id || null;
+
+      if (vaultSecretId) {
+        const updatedSecret = await admin.rpc("link_rrss_update_secret", {
+          p_secret_id:vaultSecretId,
+          p_secret:apiKey
+        });
+        if (updatedSecret.error) throw updatedSecret.error;
+      } else {
+        const secretResult = await admin.rpc("link_rrss_store_secret", {
+          p_secret:apiKey,
+          p_name:`link-rrss-zernio-${business.slug}-${crypto.randomUUID()}`,
+          p_description:`Zernio credential for ${business.name}`
+        });
+        if (secretResult.error || !secretResult.data) throw secretResult.error || new Error("No se pudo guardar la credencial.");
+        vaultSecretId=secretResult.data;
+      }
+
+      const sourcePatch = {
+        profile_id:profile.id,
+        provider:"zernio",
+        label,
+        vault_secret_id:vaultSecretId,
+        status:"configuring",
         external_profile_id:externalProfileId,
         metadata:{
           key_preview:apiKey.slice(0,4)+"…"+apiKey.slice(-4),
           external_profile_name:externalProfile.name || externalProfile.label || "Perfil Zernio"
-        }
-      }).select("id").single();
-      if (sourceInsert.error) throw sourceInsert.error;
+        },
+        updated_at:new Date().toISOString()
+      };
 
-      await syncAccounts(admin,sourceInsert.data.id,apiKey,externalProfileId);
+      if (sourceId) {
+        const updated = await admin.from("link_rrss_sources")
+          .update(sourcePatch).eq("id",sourceId).select("id").single();
+        if (updated.error) throw updated.error;
+      } else {
+        const insertedSource = await admin.from("link_rrss_sources")
+          .insert(sourcePatch).select("id").single();
+        if (insertedSource.error) throw insertedSource.error;
+        sourceId=insertedSource.data.id;
+      }
+
+      await syncAccounts(admin,sourceId,apiKey,externalProfileId);
       const summary = await fullSync(admin,businessId,"source_create");
-      return json({ok:true,source_id:sourceInsert.data.id,account_count:summary.accounts||0,summary});
+      await admin.from("link_rrss_profiles").update({status:"active",updated_at:new Date().toISOString()}).eq("id",profile.id);
+      return json({ok:true,source_id:sourceId,account_count:summary.accounts||0,summary});
     }
 
     if (action === "source.sync") {
@@ -833,9 +1079,35 @@ Deno.serve(async (req: Request) => {
       return json({ok:true,...data});
     }
 
+    if (action === "sync.inbox" || action === "pulse.sync") {
+      const businessId=String(body.business_id||"");
+      if(!businessId) return json({ok:false,error:"business_id obligatorio."},400);
+      const summary=await inboxSync(admin,businessId,String(body.trigger||"pulse_manual"));
+      return json({ok:true,mode:"incremental_inbox",summary});
+    }
+
+    if (action === "sync.content") {
+      const businessId=String(body.business_id||"");
+      if(!businessId)return json({ok:false,error:"business_id obligatorio."},400);
+      const accountId=body.account_id?String(body.account_id):null;
+      const summary=await contentSync(admin,businessId,accountId,String(body.trigger||"content_manual"));
+      return json({ok:true,mode:"incremental_content",summary});
+    }
+
     if (action === "sync.business") {
       const businessId=String(body.business_id||"");
       if(!businessId) return json({ok:false,error:"business_id obligatorio."},400);
+      // Reforma 1.0: evita iniciar otro full sync mientras uno reciente sigue en curso.
+      const activeSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: running, error: runningError } = await admin
+        .from("link_rrss_sync_runs")
+        .select("id,started_at")
+        .eq("business_id",businessId)
+        .eq("status","running")
+        .gte("started_at",activeSince)
+        .limit(1);
+      if (runningError) throw runningError;
+      if (running?.length) return json({ok:true,skipped:true,reason:"full_sync_already_running",run_id:running[0].id});
       const summary=await fullSync(admin,businessId,String(body.trigger||"manual"));
       return json({ok:true,summary});
     }
