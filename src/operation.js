@@ -106,12 +106,14 @@ function taskStatusTone(status){
 
 function countDeliverable(posts,type){
   const normalized=String(type||'').toLowerCase();
-  if(normalized==='reel') return posts.filter(p=>String(p.media_type||p.raw?.media_type||'').toLowerCase().includes('reel')).length;
-  if(normalized==='story') return posts.filter(p=>String(p.media_type||p.raw?.media_type||'').toLowerCase().includes('stor')).length;
-  if(normalized==='post') return posts.filter(p=>{
-    const t=String(p.media_type||p.raw?.media_type||'').toLowerCase();
-    return !t.includes('reel') && !t.includes('stor');
-  }).length;
+  const kind=p=>String(p.media_type||p.raw?.mediaType||p.raw?.media_type||'').toLowerCase();
+  const permalink=p=>String(p.post_url||p.raw?.permalink||'').toLowerCase();
+  // Instagram/Zernio can store reels as media_type="video"; the permalink distinguishes them.
+  const isReel=p=>kind(p).includes('reel')||/\/reels?\//.test(permalink(p));
+  const isStory=p=>kind(p).includes('stor')||/\/stories?\//.test(permalink(p));
+  if(normalized==='reel') return posts.filter(isReel).length;
+  if(normalized==='story') return posts.filter(isStory).length;
+  if(normalized==='post') return posts.filter(p=>!isReel(p)&&!isStory(p)).length;
   return 0;
 }
 
