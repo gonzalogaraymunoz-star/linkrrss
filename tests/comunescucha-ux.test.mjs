@@ -72,3 +72,31 @@ test('filtrado de la bandeja sin reconstruir la vista',()=>{
   assert.equal(empty.count,0);
   assert.match(empty.html,/No hay conversaciones/);
 });
+
+test('muestra carga, error y reintento explícito del historial',()=>{
+  const state=makeState({conversationLoading:{'external-1':true}});
+  const loading=comunEscuchaSection({state});
+  assert.match(loading,/Recuperando hilo/);
+  assert.ok(!loading.includes('data-ce-retry-messages'));
+  state.conversationLoading={};
+  state.conversationMessages={'external-1':{messages:[],error:'La conexión falló <temporalmente>'}};
+  const error=comunEscuchaSection({state});
+  assert.match(error,/data-ce-retry-messages="external-1"/);
+  assert.match(error,/La conexión falló &lt;temporalmente&gt;/);
+  assert.ok(!error.includes('La conexión falló <temporalmente>'));
+});
+test('deshabilita el envío mientras se procesa y conserva la confirmación',()=>{
+  const state=makeState({
+    conversationSending:{'external-1':true},
+    conversationSendFeedback:{'external-1':{ok:true,text:'Respuesta enviada mediante Zernio.'}}
+  });
+  const html=comunEscuchaSection({state});
+  assert.match(html,/disabled aria-busy="true">Enviando/);
+  assert.match(html,/Respuesta enviada mediante Zernio/);
+});
+test('muestra errores de envío sin perder el borrador',()=>{
+  const state=makeState({conversationSendFeedback:{'external-1':{ok:false,text:'Error <Zernio>'}}});
+  const html=comunEscuchaSection({state});
+  assert.match(html,/Error &lt;Zernio&gt;/);
+  assert.match(html,/Texto &lt;sin enviar&gt; &amp; prueba/);
+});

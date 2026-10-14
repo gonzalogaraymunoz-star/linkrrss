@@ -123,3 +123,13 @@
 
 /* On mobile, ignore stored desktop fold preferences when returning to the inbox list. */
 @media(max-width:760px){.comunescucha-page .comunescucha-shell.ce-fold-list:not(.ce-mobile-thread)>.ce-list{display:grid!important}}
+
+/* Estados de operación visibles, sin afectar el hilo ni la aprobación humana. */
+.comunescucha-page .ce-thread-error{gap:10px;padding:24px}
+.comunescucha-page .ce-thread-error strong{font-size:13px;color:#8D3934}
+.comunescucha-page .ce-thread-error span{font-size:12px;max-width:360px;overflow-wrap:anywhere}
+.comunescucha-page .ce-thread-error button{border:1px solid #C9B2AB;border-radius:9px;padding:9px 14px;background:#fff;font-size:12px;cursor:pointer}
+.comunescucha-page .ce-reply button:disabled{opacity:.6;cursor:wait}
+.comunescucha-page .ce-send-feedback{font-size:11px;line-height:1.5;margin:8px 0 0;padding:8px 10px;border-radius:8px}
+.comunescucha-page .ce-send-feedback.success{background:#F0F7E7;color:#38652D}
+.comunescucha-page .ce-send-feedback.error{background:#FFF0EC;color:#9B4134}

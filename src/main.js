@@ -72,6 +72,10 @@ const state = {
   ceDeepSearchOpen: false,
   ceMobileIntelligenceOpen: false,
   conversationLoading: {},
+  conversationMessageTokens: {},
+  conversationRequestCounter: 0,
+  conversationSending: {},
+  conversationSendFeedback: {},
   translateDimension: false,
   translateLanguage: 'original',
   conversationTranslations: {},
@@ -1706,6 +1710,9 @@ function renderApp(){
   const previousMessageScroll=previousMessageElement?.scrollTop||0;
   const previousMessageNearBottom=previousMessageElement?previousMessageElement.scrollHeight-previousMessageElement.clientHeight-previousMessageElement.scrollTop<80:false;
   const previousIntelligenceScroll=document.querySelector('.ce-intelligence')?.scrollTop||0;
+  const previousFocus=document.activeElement?.closest?.('.comunescucha-page')?document.activeElement:null;
+  const previousFocusId=previousFocus?.id||null;
+  const previousSelection=(previousFocus && typeof previousFocus.selectionStart==='number')?{start:previousFocus.selectionStart,end:previousFocus.selectionEnd}:null;
   setSidebarCollapsed(isSidebarCollapsed());
   document.body.classList.toggle('link-focus-mode',isFocusMode());
   $('#app').innerHTML=`
@@ -1727,6 +1734,12 @@ function renderApp(){
     const list=document.querySelector('.ce-list-scroll');if(list)list.scrollTop=previousListScroll;
     const thread=document.querySelector('.ce-message-thread');if(thread)thread.scrollTop=previousThreadId===String(state.selectedConversationId)&&!previousMessageNearBottom?previousMessageScroll:thread.scrollHeight;
     const intelligence=document.querySelector('.ce-intelligence');if(intelligence)intelligence.scrollTop=previousIntelligenceScroll;
+    if(previousFocusId){
+      const input=document.getElementById(previousFocusId);
+      if(input){input.focus({preventScroll:true});if(previousSelection&&typeof input.setSelectionRange==='function'){
+        try{input.setSelectionRange(previousSelection.start,previousSelection.end);}catch{}
+      }}
+    }
   }
   configureInboxPolling();
   document.dispatchEvent(new Event('linkrrss:rendered'));
@@ -1828,21 +1841,13 @@ function bind(){
   $('.ce-list-scroll')?.addEventListener('click',e=>{
     const btn=e.target.closest('[data-conversation]');
     if(!btn)return;
-    const accountId=btn.dataset.conversationAccount;
-    if(accountId){
-      const account=state.accounts.find(x=>x.id===accountId);
-      if(account)state.activeAccount=account;
-    }
-    state.selectedConversationId=btn.dataset.conversation;
-    state.ceMobileIntelligenceOpen=false;
-    state.translateDimension=false;
-    state.translateLanguage='original';
-    renderApp();
+    void selectConversation(btn.dataset.conversation,btn.dataset.conversationAccount);
   });
   $('#ce-refresh')?.addEventListener('click',()=>refreshInboxWorld({silent:false}));
   $('[data-ce-back-list]')?.addEventListener('click',()=>{state.selectedConversationId=null;state.ceMobileIntelligenceOpen=false;renderApp();});
   $('[data-ce-open-intelligence]')?.addEventListener('click',()=>{state.ceMobileIntelligenceOpen=!state.ceMobileIntelligenceOpen;renderApp();});
   $('[data-ce-close-intelligence]')?.addEventListener('click',()=>{state.ceMobileIntelligenceOpen=false;renderApp();});
+  $('[data-ce-retry-messages]')?.addEventListener('click',e=>{void loadConversationMessages(e.currentTarget.dataset.ceRetryMessages,{force:true});});
   document.querySelector('.ce-workbench')?.addEventListener('toggle',e=>{state.ceWorkbenchOpen=e.currentTarget.open;});
   document.querySelector('.ce-analysis-details')?.addEventListener('toggle',e=>{state.ceAnalysisOpen=e.currentTarget.open;});
   document.querySelector('.ce-deep-search-drawer')?.addEventListener('toggle',e=>{state.ceDeepSearchOpen=e.currentTarget.open;});
@@ -1875,19 +1880,14 @@ function bind(){
   });
   $('#ce-deep-search-form')?.addEventListener('submit',e=>{e.preventDefault();deepSearchConversations($('#ce-deep-search')?.value||'');});
   $('#ce-deep-search-clear')?.addEventListener('click',()=>{state.conversationDeepSearchQuery='';state.conversationDeepSearchResults=[];state.conversationDeepSearchError='';renderApp();});
-  document.querySelectorAll('[data-ce-search-result]').forEach(btn=>btn.onclick=async()=>{
-    const accountId=btn.dataset.accountId;
-    if(accountId){const account=state.accounts.find(x=>x.id===accountId);if(account)state.activeAccount=account;}
-    state.selectedConversationId=btn.dataset.ceSearchResult;
-    state.ceMobileIntelligenceOpen=false;
+  document.querySelectorAll('[data-ce-search-result]').forEach(btn=>btn.onclick=()=>{
     state.conversationDeepSearchResults=[];
     state.conversationDeepSearchQuery='';
-    renderApp();
-    if(!state.conversationMessages[state.selectedConversationId]) await loadConversationMessages(state.selectedConversationId);
+    void selectConversation(btn.dataset.ceSearchResult,btn.dataset.accountId);
   });
   bindComunEscuchaResizers();
   document.querySelectorAll('[data-ce-prompt]').forEach(btn=>btn.onclick=()=>{
-    const box=$('#ce-work-input'); if(box){box.value=btn.dataset.cePrompt||'';box.focus();}
+    const box=$('#ce-work-input'); if(box){box.value=btn.dataset.cePrompt||'';box.dispatchEvent(new Event('input',{bubbles:true}));box.focus();}
   });
   $('#ce-copy-work')?.addEventListener('click',async()=>{
     const box=$('#ce-work-input'); const value=box?.value?.trim();
@@ -1896,7 +1896,7 @@ function bind(){
     catch{toast('No se pudo copiar la instrucción.',true);}
   });
   document.querySelectorAll('[data-suggest-reply]').forEach(btn=>btn.onclick=()=>{
-    const box=$('#conversation-reply'); if(box){box.value=btn.dataset.suggestReply||'';box.focus();}
+    const box=$('#conversation-reply'); if(box){box.value=btn.dataset.suggestReply||'';box.dispatchEvent(new Event('input',{bubbles:true}));box.focus();}
   });
   document.querySelectorAll('[data-conversation-status]').forEach(sel=>sel.onchange=()=>saveConversationStatus(sel.dataset.conversationStatus,sel.value));
   document.querySelectorAll('[data-mark-read]').forEach(btn=>btn.onclick=()=>markConversationRead(btn.dataset.markRead));
@@ -2074,6 +2074,7 @@ function configureInboxPolling(){
 async function refreshInboxWorld({silent=false}={}){
   if(!state.canManage||!state.business||!state.sources.length||state.inboxRefreshing||state.syncing)return;
   const selectedId=state.selectedConversationId;
+  const businessId=state.business.id;
   state.inboxRefreshing=true;
   if(!silent) renderApp();
   try{
@@ -2085,15 +2086,15 @@ async function refreshInboxWorld({silent=false}={}){
     state.lastInboxRefreshAt=new Date().toISOString();
     state.panelRefreshAt.set([state.business.id,state.activeAccount?.id||'source','inbox'].join(':'),Date.now());
 
-    if(selectedId){
+    if(selectedId && state.selectedConversationId===selectedId && state.business?.id===businessId){
       delete state.conversationMessages[selectedId];
       delete state.conversationTranslations[selectedId];
     }
 
+    if(state.business?.id!==businessId)return;
     await loadBusiness({restore:false});
 
-    if(selectedId && state.section==='inbox'){
-      state.selectedConversationId=selectedId;
+    if(selectedId && state.section==='inbox' && state.selectedConversationId===selectedId && state.business?.id===businessId){
       await loadConversationMessages(selectedId);
       if(state.translateDimension) await loadConversationTranslations(selectedId);
     }
@@ -2107,24 +2108,62 @@ async function refreshInboxWorld({silent=false}={}){
   }
 }
 
-async function loadConversationMessages(conversationId){
-  const source=sourceForActiveAccount();
-  if(!source||!state.activeAccount||!conversationId)return;
+async function selectConversation(conversationId,accountId){
+  if(!conversationId)return;
+  const previousAccountId=state.activeAccount?.id;
+  const account=state.accounts.find(x=>String(x.id)===String(accountId));
+  if(account)state.activeAccount=account;
+  else if(accountId && String(state.activeAccount?.id)!==String(accountId)){
+    toast('No encontramos la cuenta de esta conversación.',true);
+    return;
+  }
+  state.selectedConversationId=conversationId;
+  state.ceMobileIntelligenceOpen=false;
+  state.translateDimension=false;
+  state.translateLanguage='original';
+  if(previousAccountId!==state.activeAccount?.id){
+    delete state.conversationMessages[conversationId];
+    delete state.conversationTranslations[conversationId];
+  }
+  renderApp();
+  if(!state.conversationMessages[conversationId]&&!state.conversationLoading[conversationId]){
+    await loadConversationMessages(conversationId);
+  }
+}
+
+async function loadConversationMessages(conversationId,{force=false}={}){
+  const account=state.activeAccount;
+  const source=state.sources.find(s=>s.id===account?.source_id);
+  const businessId=state.business?.id;
+  if(!source||!account||!conversationId||!businessId)return;
+  if(!force&&state.conversationLoading[conversationId])return;
+  const requestId=++state.conversationRequestCounter;
+  state.conversationMessageTokens[conversationId]=requestId;
   state.conversationLoading[conversationId]=true;
+  if(state.section==='inbox'&&state.selectedConversationId===conversationId)renderApp();
   try{
     const out=await invokeZernio({
       action:'zernio.get',
       source_id:source.id,
       path:'/v1/inbox/conversations/'+encodeURIComponent(conversationId)+'/messages',
-      query:{accountId:state.activeAccount.external_account_id,limit:100,sortOrder:'asc'}
+      query:{accountId:account.external_account_id,limit:100,sortOrder:'asc'}
     });
-    state.conversationMessages[conversationId]=out.data||{};
+    if(state.conversationMessageTokens[conversationId]===requestId
+      &&state.business?.id===businessId
+      &&state.activeAccount?.id===account.id){
+      state.conversationMessages[conversationId]=out.data||{};
+    }
   }catch(e){
-    state.conversationMessages[conversationId]={messages:[],error:e.message||String(e)};
-    toast('No se pudo abrir el hilo completo: '+(e.message||String(e)),true);
+    if(state.conversationMessageTokens[conversationId]===requestId
+      &&state.business?.id===businessId
+      &&state.activeAccount?.id===account.id){
+      state.conversationMessages[conversationId]={messages:[],error:e.message||String(e)};
+    }
   }finally{
-    state.conversationLoading[conversationId]=false;
-    renderApp();
+    if(state.conversationMessageTokens[conversationId]===requestId){
+      delete state.conversationLoading[conversationId];
+      if(state.section==='inbox'&&state.selectedConversationId===conversationId)renderApp();
+    }
   }
 }
 
@@ -2175,30 +2214,43 @@ async function markConversationRead(conversationId){
 }
 
 async function sendConversationReply(conversationId){
-  const source=sourceForActiveAccount(),box=$('#conversation-reply');
+  const account=state.activeAccount;
+  const businessId=state.business?.id;
+  const source=state.sources.find(s=>s.id===account?.source_id);
+  const box=$('#conversation-reply');
   const message=box?.value?.trim();
-  if(!source||!state.activeAccount||!message)return;
-  const form=document.querySelector('[data-reply-form="'+conversationId+'"]');
-  const submit=form?.querySelector('button[type="submit"]');
-  if(submit)submit.disabled=true;
+  if(!source||!account||!businessId||!conversationId||!message||state.conversationSending[conversationId])return;
+  const draftKey=[businessId,account.id,conversationId].join(':');
+  state.conversationSending[conversationId]=true;
+  delete state.conversationSendFeedback[conversationId];
+  renderApp();
+  let sent=false;
   try{
     await invokeZernio({
       action:'inbox.send',
       source_id:source.id,
       conversation_id:conversationId,
-      account_id:state.activeAccount.external_account_id,
+      account_id:account.external_account_id,
       message,
       idempotency_key:'link-rrss-'+conversationId+'-'+Date.now()
     });
-    toast('Respuesta enviada.');
-    if(box)box.value='';
-    delete state.conversationDrafts[[state.business?.id,state.activeAccount?.id,conversationId].join(':')];
-    delete state.conversationMessages[conversationId];
-    await loadConversationMessages(conversationId);
-    await saveConversationStatus(conversationId,'open');
-    await refreshInboxWorld({silent:true});
-  }catch(e){toast(e.message||String(e),true);}
-  finally{if(submit)submit.disabled=false;}
+    sent=true;
+    if((state.conversationDrafts[draftKey]||'').trim()===message)delete state.conversationDrafts[draftKey];
+    state.conversationSendFeedback[conversationId]={ok:true,text:'Respuesta enviada mediante Zernio.'};
+  }catch(e){
+    state.conversationSendFeedback[conversationId]={ok:false,text:'No se pudo confirmar el envío. Comprueba el historial antes de reintentar: '+(e.message||String(e))};
+  }finally{
+    delete state.conversationSending[conversationId];
+    if(state.section==='inbox'&&state.selectedConversationId===conversationId)renderApp();
+  }
+  if(!sent||state.business?.id!==businessId||state.activeAccount?.id!==account.id)return;
+  // La confirmación del envío no depende de que la actualización posterior funcione.
+  delete state.conversationMessages[conversationId];
+  await loadConversationMessages(conversationId);
+  try{await saveConversationStatus(conversationId,'open');}
+  catch(e){toast('Respuesta enviada, pero no se pudo actualizar el estado.',true);}
+  try{await refreshInboxWorld({silent:true});}
+  catch(e){toast('Respuesta enviada, pero no se pudo actualizar la bandeja.',true);}
 }
 
 async function loadActivityComments(){
