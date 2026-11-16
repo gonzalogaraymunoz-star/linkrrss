@@ -11,3 +11,15 @@ export function accessFallback(error,hasSession=false) {
 export function manualActionAllowed(action) {
   return action==='pulse.sync'||action==='sync.inbox'||action==='zernio.get';
 }
+
+// Passwordless sign-in only. Never creates a user or changes a password.
+export function memberEmailLinkRequest(email,href) {
+  const current=new URL(href);
+  const business=current.searchParams.get('business');
+  if(!business||!business.trim())throw new Error('Abre primero el enlace del negocio que quieres consultar.');
+  const callback=new URL(current.origin+'/');
+  callback.searchParams.set('business',business);
+  callback.searchParams.set('section','inbox');
+  callback.searchParams.set('update_mode','manual');
+  return {email:email.trim(),options:{shouldCreateUser:false,emailRedirectTo:callback.href}};
+}
