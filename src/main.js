@@ -1,3 +1,4 @@
+import {manualUpdateMode,accessFallback,manualActionAllowed} from './access-mode.js';
 import { contentRefreshDue, snapshotExpired, snapshotLabel } from './sync-freshness.js';
 import { createClient } from '@supabase/supabase-js';
 import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
@@ -37,6 +38,7 @@ const fmtDate = v => {
 
 const state = {
   session: null,
+  manualUpdate: manualUpdateMode(location.search),
   businesses: [],
   statuses: [],
   gameStates: [],
@@ -166,6 +168,7 @@ function statusLabel(s){
 function statusDot(s){ return s==='active'?'ok':s==='attention'?'warn':s==='missing'?'off':'pending'; }
 
 async function invokeZernio(body){
+  if(state.manualUpdate&&!manualActionAllowed(body?.action))throw new Error('Modo manual de prueba: esta acción no está habilitada. No se envían mensajes ni publicaciones.');
   const { data, error } = await db.functions.invoke('link-rrss-zernio',{ body });
   if(error) throw error;
   if(!data?.ok) throw new Error(data?.error || 'No se pudo consultar Zernio.');
@@ -201,13 +204,20 @@ async function loadBase(){
     state.canManage=member===true;
   }
 
+  if(state.manualUpdate&&!session){renderLogin();return;}
+
   const [s,g]=await Promise.all([
     db.from('link_world_rrss_status_v').select('*').order('business_name'),
     state.canManage
       ? db.from('link_game_operating_state_v').select('business_id,name,temperature,conversion_percent,game_state,game_state_label,awaiting_evidence_count,next_action_due_at,overdue,attention_mode,panel_tone,suggested_action,suggested_prompt,hours_remaining').order('name')
       : Promise.resolve({data:[]})
   ]);
-  if(s.error) throw s.error;
+  if(s.error){
+    const fallback=accessFallback(s.error,Boolean(session));
+    if(fallback==='login'){renderLogin();return;}
+    if(fallback==='denied'){renderDenied();return;}
+    throw s.error;
+  }
   state.statuses=s.data||[];
   state.gameStates=g.data||[];
   state.businesses=state.statuses.map(x=>({
@@ -218,16 +228,18 @@ async function loadBase(){
 
   const params=new URLSearchParams(location.search);
   const requested=params.get('business');
-  state.business = state.businesses.find(x=>x.id===requested || x.slug===requested) || state.businesses[0] || null;
+  const requestedBusiness=state.businesses.find(x=>x.id===requested || x.slug===requested);
+  if(state.manualUpdate&&!requestedBusiness)throw new Error('Modo manual: especifica un negocio válido y autorizado en el enlace. No se seleccionó ni actualizó otro cliente.');
+  state.business = requestedBusiness || state.businesses[0] || null;
   await loadBusiness({restore:true});
-  const requestedSection=params.get('section');
+  const requestedSection=state.manualUpdate?'inbox':params.get('section');
   if(requestedSection && nav.some(x=>x[0]===requestedSection)){
     state.section=requestedSection;
     syncUrl();
     renderApp();
     persistWorkspace();
   }
-  await handleZernioReturn();
+  if(!state.manualUpdate)await handleZernioReturn();
   await handleRecoveryFlow();
 }
 
@@ -363,14 +375,15 @@ async function loadBusiness(opts={}){
     };
   }
 
+  if(state.manualUpdate)state.section='inbox';
   state.businessLoadedId=id;
   state.liveData={};
   syncUrl();
   renderApp();
-  startNotificationRealtime({db,state,renderApp,toast});
+  if(!state.manualUpdate)startNotificationRealtime({db,state,renderApp,toast});
 
   const requestedDraft=new URLSearchParams(location.search).get('draft');
-  if(state.canManage && requestedDraft && state.publicationDrafts.some(d=>d.id===requestedDraft) && state.autoOpenedDraft!==requestedDraft){
+  if(!state.manualUpdate && state.canManage && requestedDraft && state.publicationDrafts.some(d=>d.id===requestedDraft) && state.autoOpenedDraft!==requestedDraft){
     state.autoOpenedDraft=requestedDraft;
     state.section='content';
     renderApp();
@@ -379,7 +392,7 @@ async function loadBusiness(opts={}){
 
   if(state.canManage){
     persistWorkspace();
-    setTimeout(()=>maybeAutoSync(false),80);
+    if(!state.manualUpdate)setTimeout(()=>maybeAutoSync(false),80);
   }
 }
 
@@ -621,6 +634,7 @@ function syncStateLabel(){
   return ({ok:'Mensajes sin verificar',partial:'Parcial',error:'Error',syncing:'Sincronizando',idle:'Sin sincronizar'})[s]||s;
 }
 async function persistWorkspace(){
+  if(state.manualUpdate)return;
   if(!state.canManage||!state.business)return;
   try{
     await invokeZernio({
@@ -647,6 +661,7 @@ function needsAutoSync(){
   return needsInboxSync()||needsContentSync();
 }
 async function maybeAutoSync(force=false,scope='all'){
+  if(state.manualUpdate)return;
   if(!state.canManage||!state.business||!state.sources.length||state.syncing)return;
   const businessId=state.business.id;
   const accountId=state.activeAccount?.id||null;
@@ -689,6 +704,7 @@ async function maybeAutoSync(force=false,scope='all'){
 function syncUrl(){
   if(!state.business) return;
   const u=new URL(location.href);
+  if(state.manualUpdate)u.searchParams.set('update_mode','manual');
   u.searchParams.set('business',state.business.id);
   u.searchParams.set('section',state.section);
   history.replaceState({},'',u);
@@ -814,7 +830,7 @@ function topbar(){
       <div class="crumb"><span>LINK WORLD</span><b>/</b><strong>${safe(state.business?.name||'RRSS')}</strong></div>
       <div class="mapa-business-picker">
         <label for="business-select">CÉLULA ACTIVA</label>
-        <select id="business-select" aria-label="Elegir negocio de LINK RRSS">
+        <select id="business-select" aria-label="Elegir negocio de LINK RRSS" ${state.manualUpdate?'disabled':''}>
           ${state.businesses.map(b=>`<option value="${safe(b.id)}" ${state.business?.id===b.id?'selected':''}>${safe(b.name)}</option>`).join('')}
         </select>
       </div>
@@ -830,7 +846,7 @@ function topbar(){
 }
 
 function sectionNav(){
-  return `<nav class="section-nav">${nav.map(([id,label])=>`
+  return `<nav class="section-nav">${nav.filter(([id])=>!state.manualUpdate||id==='inbox').map(([id,label])=>`
     <button data-section="${id}" class="${state.section===id?'active':''}"><i data-lucide="${({home:'home',artifacts:'workflow',inbox:'message-circle',content:'file-text',calendar:'calendar-days',studio:'music-2',operation:'activity',analytics:'chart-no-axes-combined',connections:'plug-zap',automations:'workflow',activity:'activity'})[id]}"></i><span>${label}</span></button>`).join('')}</nav>`;
 }
 
@@ -1763,6 +1779,7 @@ function renderApp(){
       <div class="mobile-scrim" id="mobile-scrim"></div>
       <main class="main">
         ${topbar()}
+        ${state.manualUpdate?'<p role="status" style="padding:10px 20px;margin:0;background:#fff8df;color:#493b12">Modo manual de prueba: sin actualización automática, envíos, publicaciones ni historial masivo. Actualizar consulta las cuentas conectadas del negocio elegido una vez.</p>':''}
         ${['artifacts','inbox'].includes(state.section)?'':accountStrip()}
         ${['connections','artifacts','inbox'].includes(state.section)?'':periodControls()}
         <div class="content">${bodySection()}</div>
@@ -1772,6 +1789,9 @@ function renderApp(){
     <div id="toast" class="toast hidden"></div>`;
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
+  if(state.manualUpdate){
+    document.querySelectorAll('#quick-connect,[data-mark-read],[data-conversation-status],[data-reply-form] button[type="submit"],#notification-bell,[data-translate-dimension],[data-translate-lang]').forEach(el=>{el.disabled=true;el.title='No habilitado en modo manual de prueba';});
+  }
   if(state.section==='inbox'){
     const list=document.querySelector('.ce-list-scroll');if(list)list.scrollTop=previousListScroll;
     const thread=document.querySelector('.ce-message-thread');if(thread)thread.scrollTop=previousThreadId===String(state.selectedConversationId)&&!previousMessageNearBottom?previousMessageScroll:thread.scrollHeight;
@@ -1839,7 +1859,7 @@ function bind(){
   $('#new-post')?.addEventListener('click',openPostComposer);
   document.querySelectorAll('[data-draft-approve]').forEach(btn=>btn.onclick=()=>openPublicationDraftApproval(btn.dataset.draftApprove));
   document.querySelectorAll('[data-draft-cancel]').forEach(btn=>btn.onclick=()=>cancelPublicationDraft(btn.dataset.draftCancel));
-  $('#refresh')?.addEventListener('click',()=>maybeAutoSync(true));
+  $('#refresh')?.addEventListener('click',()=>state.manualUpdate?refreshInboxWorld({silent:false}):maybeAutoSync(true));
   $('#refresh-content')?.addEventListener('click',()=>maybeAutoSync(true,'content'));
   document.querySelectorAll('[data-post-thumbnail]').forEach(img=>{
     const failed=()=>{const wrapper=img.closest('.post-media');if(wrapper)wrapper.innerHTML='<div class="post-media-fallback">Vista previa no disponible · enlace externo</div>';};
@@ -1967,6 +1987,7 @@ function bind(){
 
 
 async function loadHistoryIfNeeded(){
+  if(state.manualUpdate)return;
   if(!state.canManage||!state.activeAccount||!state.business)return;
   const memory=(state.accountMemory||[]).find(x=>x.account_id===state.activeAccount.id);
   if(memory?.history_backfilled_at||state.historyBackfillRequested.has(state.activeAccount.id))return;
@@ -1984,6 +2005,7 @@ async function loadHistoryIfNeeded(){
 }
 
 async function loadCurrentSection(){
+  if(state.manualUpdate)return;
   if(state.section==='studio'){
     if(state.canManage&&state.business){try{await loadStudio({state,db});renderApp();}catch(e){toast(e.message||String(e),true);}}
     return;
@@ -2109,6 +2131,7 @@ function bindComunEscuchaResizers(){
 }
 
 function configureContentPolling(){
+  if(state.manualUpdate){if(state.contentPollTimer)clearInterval(state.contentPollTimer);state.contentPollTimer=null;return;}
   if(state.contentPollTimer)return;
   state.contentPollTimer=setInterval(()=>{
     if(document.hidden||state.syncing||!state.canManage||!state.business)return;
@@ -2117,6 +2140,7 @@ function configureContentPolling(){
 }
 
 function configureInboxPolling(){
+  if(state.manualUpdate){if(state.inboxPollTimer)clearInterval(state.inboxPollTimer);state.inboxPollTimer=null;state.inboxPollKey=null;return;}
   const businessKey=state.section==='inbox'&&state.canManage&&state.business?state.business.id:null;
   if(state.inboxPollKey===businessKey && (!businessKey || state.inboxPollTimer))return;
   if(state.inboxPollTimer){clearInterval(state.inboxPollTimer);state.inboxPollTimer=null;}
@@ -2129,17 +2153,19 @@ function configureInboxPolling(){
 }
 
 async function refreshInboxWorld({silent=false}={}){
+  if(state.manualUpdate&&silent)return;
   if(!state.canManage||!state.business||!state.sources.length||state.inboxRefreshing||state.syncing)return;
   const selectedId=state.selectedConversationId;
   const businessId=state.business.id;
   state.inboxRefreshing=true;
   if(!silent) renderApp();
   try{
-    await invokeZernio({
+    const syncResult=await invokeZernio({
       action:'pulse.sync',
       business_id:state.business.id,
       trigger:silent?'pulse_inbox_poll':'pulse_inbox_manual'
     });
+    if(state.manualUpdate&&syncResult?.summary?.errors?.length)throw new Error('Actualización parcial: revisa los errores del proveedor antes de considerar los datos actuales.');
     state.lastInboxRefreshAt=new Date().toISOString();
     state.panelRefreshAt.set([state.business.id,state.activeAccount?.id||'source','inbox'].join(':'),Date.now());
 
@@ -2750,4 +2776,4 @@ if(bootKaraokeRoute()){
     $('#retry-linkrrss')?.addEventListener('click',()=>bootLinkRRSS());
   };
   bootLinkRRSS();
-}
+    }
