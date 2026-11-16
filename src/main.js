@@ -1,4 +1,4 @@
-import {manualUpdateMode,accessFallback,manualActionAllowed} from './access-mode.js';
+import {manualUpdateMode,accessFallback,manualActionAllowed,memberEmailLinkRequest} from './access-mode.js';
 import { contentRefreshDue, snapshotExpired, snapshotLabel } from './sync-freshness.js';
 import { createClient } from '@supabase/supabase-js';
 import { createIcons, Home, MessageCircle, FileText, ChartNoAxesCombined, PlugZap, Workflow, Activity, Search, Plus, ChevronDown, RefreshCw, ArrowLeft, Instagram, Facebook, Youtube, Music2, Globe2, CircleAlert, CircleCheck, KeyRound, X, Send, ShieldCheck, CalendarDays, Info } from 'lucide';
@@ -723,9 +723,25 @@ function renderLogin(){
           <label>Contraseña<input id="password" type="password" autocomplete="current-password" required></label>
           <button type="submit">Entrar</button>
         </form>
+        ${state.manualUpdate?'<button id="email-link-login" class="auth-secondary" type="button">Entrar con enlace a mi correo</button><p id="email-link-status" role="status" aria-live="polite"></p>':''}
         <div id="auth-error" class="inline-error hidden"></div>
       </section>
     </main>`;
+  $('#email-link-login')?.addEventListener('click',async()=>{
+    const emailInput=$('#email');
+    if(!emailInput.reportValidity())return;
+    const button=$('#email-link-login'),status=$('#email-link-status');
+    button.disabled=true;
+    status.textContent='Solicitando enlace de acceso…';
+    try{
+      const request=memberEmailLinkRequest(emailInput.value,location.href);
+      const {error}=await db.auth.signInWithOtp(request);
+      if(error)throw error;
+      status.textContent='Si el correo pertenece a una cuenta LINK existente, recibirá un enlace de un solo uso. Ábrelo en este navegador. No cambia tu contraseña ni crea otra cuenta.';
+      button.textContent='Volver a enviar enlace';
+    }catch(error){status.textContent=error?.message||'No se pudo solicitar el enlace.';}
+    finally{button.disabled=false;}
+  });
   $('#login-form').addEventListener('submit',async e=>{
     e.preventDefault();
     const errorBox=$('#auth-error');
@@ -2776,4 +2792,4 @@ if(bootKaraokeRoute()){
     $('#retry-linkrrss')?.addEventListener('click',()=>bootLinkRRSS());
   };
   bootLinkRRSS();
-    }
+                  }
