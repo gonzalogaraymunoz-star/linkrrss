@@ -3,7 +3,19 @@
   "main": "./lama-evaluation.js",
   "compatibility_date": "2026-11-17",
   "workers_dev": true,
-  "ai": { "binding": "AI" },
-  "observability": { "enabled": true },
-  "triggers": { "crons": [] }
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "17 * * * *"
+    ]
+  },
+  "preview_urls": false,
+  "vars": {
+    "LAMA_ENABLED": "true"
+  }
 }
