@@ -1,3 +1,32 @@
+import {intakeReviewMarkup} from './intake-review.js';
+// Local review patch. This display guard does not create requests or write CRM data.
+const LAMA_INTAKE_BUSINESS_ID='766f9317-97e4-43e8-aea0-ff8d7e318edc';
+const validTime=value=>value?Date.parse(value):NaN;
+export function intakeDisplayRow(row){
+  if(row.business_id!==LAMA_INTAKE_BUSINESS_ID) return row;
+  const analyzed=validTime(row.analyzed_through_message_at);
+  const source=validTime(row.source_last_message_at);
+  const latest=validTime(row.last_activity_at);
+  const confidence=Number(row.confidence);
+  const current=row.analysis_state==='ready' && row.needs_refresh===false &&
+    Number.isFinite(validTime(row.last_analyzed_at)) && Number.isFinite(analyzed) &&
+    Number.isFinite(source) && analyzed>=source &&
+    (!row.last_activity_at || (Number.isFinite(latest) && analyzed>=latest)) &&
+    Number.isFinite(confidence) && confidence>0 && confidence<=1;
+  if(current) return {...row,intake_display_pending:false};
+  return {...row,
+    intake_display_pending:true,
+    intent_key:null,intent_label:'Solicitud por revisar',commercial_stage:'Sin verificar',
+    priority:null,confidence:null,request_summary:null,summary_md:null,context_md:null,
+    extracted_data:{},products:[],missing_data:[],objections:[],unresolved_questions:[],
+    next_action:'Revisar los mensajes de la solicitud actual',next_apparatus_key:null,
+    suggested_apparatus_id:null,suggested_apparatus_name:null,suggested_apparatus_kind:null,
+    suggested_apparatus_mode:null,suggested_apparatus_status:null,
+    attention_state:row.analysis_state==='manual_review'?'requiere_humano':
+      row.analysis_state==='error'?'error':'entendiendo'
+  };
+}
+
 const esc = (v='') => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const dateLabel = v => {
@@ -73,7 +102,7 @@ function chips(values=[],kind=''){
   }).join('');
 }
 function filteredRows(state){
-  let rows=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id);
+  let rows=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id).map(intakeDisplayRow);
   const q=String(state.conversationQuery||'').trim().toLowerCase();
   const channel=state.conversationChannel||'all';
   const attention=state.conversationFilter||'all';
@@ -224,13 +253,13 @@ function intelligenceMarkup(state,row){
     },
     {
       key:'QUÉ ESTÁ EN DUDA',
-      value:(objections.length+questions.length)?(objections.length+questions.length)+' punto(s) abierto(s)':'Sin dudas detectadas',
+      value:row.intake_display_pending?'Dudas aún no evaluadas':(objections.length+questions.length)?(objections.length+questions.length)+' punto(s) abierto(s)':'Sin dudas detectadas',
       chips:[...objections,...questions],
       tone:'doubt'
     },
     {
       key:'QUÉ FALTA',
-      value:missing.length?missing.length+' dato(s) para avanzar':'Nada crítico detectado',
+      value:row.intake_display_pending?'Datos requeridos aún no evaluados':missing.length?missing.length+' dato(s) para avanzar':'Nada crítico detectado',
       chips:missing,
       tone:'missing'
     },
@@ -242,9 +271,10 @@ function intelligenceMarkup(state,row){
     }
   ];
 
-  return '<aside class="ce-intelligence">'+
+  return '<aside class="ce-intelligence '+(row.intake_display_pending?'ce-intake-pending':'')+'">'+
     '<button type="button" class="ce-intelligence-close" data-ce-close-intelligence>← Volver al chat</button>'+
-    '<div class="ce-side-title"><div><span class="eyebrow">COMUNESCUCHA</span><h2>Abstracción operativa</h2><p>Del hilo humano al estado accionable.</p></div><span class="ce-analysis-state '+esc(row.analysis_state||'queued')+'">'+esc(row.analysis_state==='ready'?'Listo':row.analysis_state==='manual_review'?'Revisar':'Procesando')+'</span></div>'+
+    '<div class="ce-side-title"><div><span class="eyebrow">COMUNESCUCHA</span><h2>Abstracción operativa</h2><p>Del hilo humano al estado accionable.</p></div><span class="ce-analysis-state '+esc(row.analysis_state||'queued')+'">'+esc(row.intake_display_pending?'Por revisar':row.analysis_state==='ready'?'Listo':row.analysis_state==='manual_review'?'Revisar':'Procesando')+'</span></div>'+
+    (row.intake_display_pending?'<p class="ce-intake-warning" role="status">Interpretación pendiente o desactualizada. No usar etapas ni sugerencias anteriores para operar. La integridad del historial todavía debe verificarse.</p>':'')+
     '<details class="ce-analysis-details" '+(state.ceAnalysisOpen?'open':'')+'><summary>Interpretación completa <span>7 pasos</span></summary><section class="ce-abstraction-protocol">'+
       abstraction.map((item,index)=>'<article class="ce-abstraction-step '+esc(item.tone)+'">'+
         '<div class="ce-step-index">'+(index+1)+'</div>'+
@@ -257,10 +287,11 @@ function intelligenceMarkup(state,row){
     '</section></details>'+
     '<section class="ce-info-grid">'+
       '<div><span class="ce-info-label">ESTADO</span><strong>'+esc(attentionLabels[row.attention_state]||'Seguimiento')+'</strong></div>'+
-      '<div><span class="ce-info-label">PRIORIDAD</span><strong>'+esc(String(row.priority??50))+'/100</strong></div>'+
+      '<div><span class="ce-info-label">PRIORIDAD</span><strong>'+(row.priority===null?'Sin evaluar':esc(String(row.priority??50))+'/100')+'</strong></div>'+
       '<div><span class="ce-info-label">ETAPA</span><strong>'+esc(row.commercial_stage||'unknown')+'</strong></div>'+
       '<div><span class="ce-info-label">CONFIANZA</span><strong>'+(confidence===null?'—':esc(String(confidence))+'%')+'</strong></div>'+
     '</section>'+
+    intakeReviewMarkup(state,row)+
     '<section class="ce-info-card specialist">'+
       '<span class="ce-info-label">ESPECIALISTA DEL NEGOCIO</span>'+
       '<strong class="ce-big">'+esc(row.specialist_name||'Sin asignar')+'</strong>'+
@@ -298,7 +329,7 @@ export function comunEscuchaSection({state}){
   if(!state.canManage){
     return '<section class="section-heading compact"><div><span class="eyebrow">COMUNESCUCHA</span><h1>Conversaciones</h1><p>La memoria social es privada. Entra en modo Administración para leer, clasificar y responder.</p></div></section>';
   }
-  const all=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id);
+  const all=(state.conversationControl||[]).filter(r=>r.business_id===state.business?.id).map(intakeDisplayRow);
   const listResults=comunEscuchaListResults({state});
   const stats=topStats(all);
   const selected=all.find(r=>String(r.external_conversation_id)===String(state.selectedConversationId))||null;
@@ -333,4 +364,4 @@ export function comunEscuchaSection({state}){
       intelligenceMarkup(state,selected).replace('class="ce-intelligence','id="ce-intelligence-panel" class="ce-intelligence')+
     '</div>'+
   '</section>';
-}
+                                                                                                                                                                                                                                                                             }
