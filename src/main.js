@@ -2165,7 +2165,7 @@ function configureInboxPolling(){
   state.inboxPollTimer=setInterval(()=>{
     if(document.hidden||state.section!=='inbox'||state.inboxRefreshing||state.syncing||state.business?.id!==businessKey)return;
     void refreshInboxWorld({silent:true});
-  },20000);
+  },businessKey==='766f9317-97e4-43e8-aea0-ff8d7e318edc'?3600000:20000);
 }
 
 async function refreshInboxWorld({silent=false}={}){
@@ -2792,4 +2792,4 @@ if(bootKaraokeRoute()){
     $('#retry-linkrrss')?.addEventListener('click',()=>bootLinkRRSS());
   };
   bootLinkRRSS();
-                  }
+                                                                                                                                                                                                                                                                                                                                                                                                                                              }
