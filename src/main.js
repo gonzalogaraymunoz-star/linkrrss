@@ -1,3 +1,4 @@
+import {bindIntakeReview} from './intake-review.js';
 import {manualUpdateMode,accessFallback,manualActionAllowed,memberEmailLinkRequest} from './access-mode.js';
 import { contentRefreshDue, snapshotExpired, snapshotLabel } from './sync-freshness.js';
 import { createClient } from '@supabase/supabase-js';
@@ -1805,6 +1806,10 @@ function renderApp(){
     <div id="toast" class="toast hidden"></div>`;
   createIcons({icons:{Home,MessageCircle,FileText,ChartNoAxesCombined,PlugZap,Workflow,Activity,Search,Plus,ChevronDown,RefreshCw,ArrowLeft,Instagram,Facebook,Youtube,Music2,Globe2,CircleAlert,CircleCheck,KeyRound,X,Send,ShieldCheck,CalendarDays,Info}});
   bind();
+  if(state.section==='inbox'){
+    const intakeRow=(state.conversationControl||[]).find(r=>r.business_id===state.business?.id&&r.external_conversation_id===state.selectedConversationId);
+    if(intakeRow)bindIntakeReview({state,row:intakeRow,db,render:renderApp});
+  }
   if(state.manualUpdate){
     document.querySelectorAll('#quick-connect,[data-mark-read],[data-conversation-status],[data-reply-form] button[type="submit"],#notification-bell,[data-translate-dimension],[data-translate-lang]').forEach(el=>{el.disabled=true;el.title='No habilitado en modo manual de prueba';});
   }
