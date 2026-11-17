@@ -83,7 +83,7 @@ async function processOne({ AI, store, clock = Date.now }) {
   }
 }
 
-// ../lama-intake-final/automatic-worker.js
+// ../lama-intake-final/automatic-worker-upstream-DRAFT.js
 var URL = "https://zgbnjlrxzvzpigmwidsp.supabase.co/rest/v1/rpc/link_lama_machine_v1";
 var PUBLISHABLE = "sb_publishable_RE_eqhBaLeaUMHuBjLUY2Q_OZNBm9_A";
 async function digest(value) {
@@ -107,7 +107,7 @@ function capability(env) {
     fail: (data) => call("fail", data)
   };
 }
-var automatic_worker_default = {
+var automatic_worker_upstream_DRAFT_default = {
   async fetch() {
     return Response.json({ service: "lama-intake-agent", mode: "private_scheduled_only", model: MODEL, public_inference: false, outbound_messaging: false, payments: false, reservations: false });
   },
@@ -121,13 +121,17 @@ var automatic_worker_default = {
       return;
     }
     try {
+      const sync = await fetch("https://zgbnjlrxzvzpigmwidsp.supabase.co/functions/v1/link-rrss-zernio", { method: "POST", headers: { "Content-Type": "application/json", apikey: PUBLISHABLE, Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpnYm5qbHJ4enZ6cGlnbXdpZHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MjIyNTUsImV4cCI6MjEwMzA5ODI1NX0.E84Pm9OCWGYDGcVl2v66KdR2SJOeumZ3fzGfrH4JoNs", "x-lama-key": env.LAMA_INTAKE_KEY }, body: JSON.stringify({ action: "machine.lama.inbox" }), signal: AbortSignal.timeout(12e4) });
+      if (!sync.ok) throw Error("upstream_http_" + sync.status);
+      const status = await sync.json();
+      if (status.ok !== true) throw Error("upstream_not_verified");
       const outcome = await processOne({ AI: env.AI, store: capability(env) });
-      console.log(JSON.stringify(outcome));
+      console.log(JSON.stringify({ upstream: status.state, ...outcome }));
     } catch (error) {
       console.log(JSON.stringify({ state: "error", reason: String(error.message).slice(0, 100) }));
     }
   }
 };
 export {
-  automatic_worker_default as default
+  automatic_worker_upstream_DRAFT_default as default
 };
