@@ -484,7 +484,7 @@ async function safeFetch(apiKey: string, path: string, query: Record<string, unk
 }
 
 
-async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
+async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox", machineScope:any=null) {
   const startedAt=new Date().toISOString();
   await admin.from("link_rrss_workspace_state").upsert({
     business_id:businessId,last_sync_started_at:startedAt,last_sync_status:"syncing",last_sync_error:null,updated_at:startedAt
@@ -515,6 +515,7 @@ async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
     summary.sources=(sources||[]).length;
 
     for(const s of (sources||[])){
+      if(machineScope && s.id!==machineScope.sourceId)continue;
       sourceForRun=s.id;
       const {apiKey}=await readSourceSecret(admin,s.id);
       const {data:accounts,error:accountError}=await admin.from("link_rrss_accounts").select("*").eq("source_id",s.id).eq("status","connected").order("platform");
@@ -522,13 +523,15 @@ async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
       summary.accounts+=(accounts||[]).length;
 
       for(const a of (accounts||[])){
+        if(machineScope && (a.id!==machineScope.accountId || a.platform!=="whatsapp"))continue;
         const inbox=await safeFetch(apiKey,"/v1/inbox/conversations",{accountId:a.external_account_id,platform:a.platform,limit:100,sortOrder:"desc"});
         if(!inbox.ok){
           summary.errors.push({module:"inbox",account:a.username,error:inbox.error});
           continue;
         }
 
-        const conversations=rows(inbox.data,["conversations"]);
+        let conversations=rows(inbox.data,["conversations"]);
+        if(machineScope)conversations=conversations.filter((c:any)=>{const t=Date.parse(String(c?.updatedTime||c?.updatedAt||c?.lastMessageAt||""));return Number.isFinite(t)&&t>=Date.parse(machineScope.notBefore);}).slice(0,30);
         summary.conversations_seen+=conversations.length;
 
         const {data:existingRows,error:existingError}=await admin
@@ -539,6 +542,7 @@ async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
 
         const existingByExternal=new Map((existingRows||[]).map((row:any)=>[String(row.external_conversation_id),row]));
         const changed=conversations.filter((c:any)=>{
+          if(machineScope){const originalAt=Date.parse(String(c?.updatedTime||c?.updatedAt||c?.lastMessageAt||""));if(!Number.isFinite(originalAt)||originalAt<Date.parse(machineScope.notBefore))return false;}
           const externalId=String(c?.id || c?._id || "");
           if(!externalId) return false;
           const old:any=existingByExternal.get(externalId);
@@ -556,6 +560,7 @@ async function inboxSync(admin:any, businessId:string, trigger="pulse_inbox") {
         const persisted=await persistConversations(admin,a,conversations);
         const localByExternal=new Map((persisted.rows||[]).map((row:any)=>[String(row.external_conversation_id),String(row.id)]));
 
+        if(machineScope && changed.length>30)throw new Error("machine_sync_limit");
         const inboxBatchSize=String(a.platform||"").toLowerCase()==="whatsapp"?2:4;
         const inboxBatchPauseMs=String(a.platform||"").toLowerCase()==="whatsapp"?350:100;
         for(let i=0;i<changed.length;i+=inboxBatchSize){
@@ -845,7 +850,8 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
             }
           }
 
-          const inboxBatchSize=String(a.platform||"").toLowerCase()==="whatsapp"?2:4;
+          if(machineScope && changed.length>30)throw new Error("machine_sync_limit");
+        const inboxBatchSize=String(a.platform||"").toLowerCase()==="whatsapp"?2:4;
           const inboxBatchPauseMs=String(a.platform||"").toLowerCase()==="whatsapp"?700:250;
           for(let i=0;i<conversations.length;i+=inboxBatchSize){
             const batch=conversations.slice(i,i+inboxBatchSize);
@@ -952,10 +958,21 @@ async function fullSync(admin: any, businessId: string, trigger = "app_open") {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    await requireMember(req);
     const body = await req.json();
     const action = String(body?.action || "");
     const admin = adminClient();
+    if(action === "machine.lama.inbox") {
+      const key=req.headers.get("x-lama-key")||"";
+      if(key.length<40)return json({ok:false,error:"machine_access_denied"},403);
+      const gate=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_ANON_KEY")!,{global:{headers:{"x-lama-key":key}},auth:{persistSession:false,autoRefreshToken:false}});
+      const {data:access,error}=await gate.rpc("link_lama_machine_v1",{p_action:"sync_authorize",p_data:{}});
+      if(error||access?.ok!==true)return json({ok:false,error:"machine_access_denied"},403);
+      if(access.state==="sync_cooldown")return json({ok:true,state:"sync_cooldown"});
+      if(access.state!=="sync_allowed")return json({ok:false,error:"invalid_sync_grant"},403);
+      const summary=await inboxSync(admin,"766f9317-97e4-43e8-aea0-ff8d7e318edc","lama_machine_hourly",{sourceId:"b507dbc3-6968-4def-8cf2-a7e08145511c",accountId:"e73576fe-3532-4dc6-b344-fa24f99f34dd",notBefore:access.not_before});
+      return json({ok:summary.errors.length===0,state:summary.errors.length?"sync_partial":"sync_complete",summary});
+    }
+    await requireMember(req);
 
     if (action === "source.preview") {
       const apiKey = String(body.api_key || "").trim();
