@@ -1,3 +1,5 @@
+import {openIntakePortal} from './intake-portal.js';
+import {listIntakeRequests,LAMA_BUSINESS_ID} from './intake-client.js';
 import {bindIntakeReview} from './intake-review.js';
 import {manualUpdateMode,accessFallback,manualActionAllowed,memberEmailLinkRequest} from './access-mode.js';
 import { contentRefreshDue, snapshotExpired, snapshotLabel } from './sync-freshness.js';
@@ -206,6 +208,9 @@ async function loadBase(){
   }
 
   if(state.manualUpdate&&!session){renderLogin();return;}
+  if(session&&!state.canManage&&new URLSearchParams(location.search).get('business')===LAMA_BUSINESS_ID){
+    try{const requests=await listIntakeRequests(db);await openIntakePortal(db,requests);return;}catch(error){console.warn('Scoped intake unavailable',error.code||'read_error');}
+  }
 
   const [s,g]=await Promise.all([
     db.from('link_world_rrss_status_v').select('*').order('business_name'),
