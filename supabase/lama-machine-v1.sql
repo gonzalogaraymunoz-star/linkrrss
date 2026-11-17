@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION public.link_lama_machine_v1(p_action text,p_data json
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
 DECLARE cfg public.link_lama_machine_config%rowtype;j public.link_lama_machine_jobs%rowtype;
  b constant uuid:='766f9317-97e4-43e8-aea0-ff8d7e318edc';a constant uuid:='e73576fe-3532-4dc6-b344-fa24f99f34dd';
- tok text;c record;ids uuid[];msgs jsonb;ex jsonb;r jsonb;f jsonb;e jsonb;k text;i integer:=0;v_ref text;v_anchor uuid;v_id uuid;v_ids jsonb:='[]';v_value text;source_text text;
+ tok text;c record;ids uuid[];msgs jsonb;ex jsonb;r jsonb;f jsonb;e jsonb;k text;i integer:=0;v_ref text;v_anchor uuid;v_id uuid;v_ids jsonb:='[]';v_value text;source_text text;v_prior uuid;v_service text;
 BEGIN
  tok:=coalesce(nullif(current_setting('request.headers',true),'')::jsonb->>'x-lama-key','');
  SELECT * INTO cfg FROM public.link_lama_machine_config WHERE id FOR UPDATE;
@@ -70,6 +70,13 @@ BEGIN
    END IF;
   END LOOP;
   v_ref:='linkrrss-request:'||md5(j.conversation_id::text||r::text)::uuid::text;
+  v_service:=lower(btrim(r->'fields'->'service'->>'value'));
+  SELECT id INTO v_prior FROM public.link_sales_inbox WHERE business_id=b AND source_conversation_id=j.conversation_id AND source_message_id=v_anchor AND review ? 'intake_auto_v1' AND status='received'
+   AND lower(btrim(review->'intake_auto_v1'->'fields'->'service'->>'value')) IS NOT DISTINCT FROM v_service AND external_ref<>v_ref LIMIT 1;
+  IF v_prior IS NOT NULL THEN
+   UPDATE public.link_sales_inbox SET review=review||jsonb_build_object('intake_needs_review',true,'machine_revision_conflict',true),updated_at=now() WHERE id=v_prior;
+   v_ids:=v_ids||to_jsonb(v_prior);CONTINUE;
+  END IF;
   SELECT id INTO v_id FROM public.link_sales_inbox WHERE business_id=b AND channel='whatsapp' AND external_ref=v_ref;
   IF v_id IS NULL THEN
    INSERT INTO public.link_sales_inbox(business_id,channel,external_ref,fingerprint,source_message_id,source_conversation_id,evidence,review)
@@ -82,5 +89,14 @@ BEGIN
  UPDATE public.link_lama_machine_jobs SET completed_revision=j.claimed_revision,lease_until=NULL,claim_id=NULL,classification=ex->>'classification',last_error=NULL,model=left(p_data->>'model',150),usage=p_data->'usage',completed_at=now() WHERE conversation_id=j.conversation_id;
  RETURN jsonb_build_object('ok',true,'request_count',i,'inbox_ids',v_ids,'lead_created',false,'reservation_confirmed',false,'payment_created',false);
 END $fn$;
+CREATE OR REPLACE FUNCTION public.link_lama_auto_invalidate_v1() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $iv$
+BEGIN
+ IF NEW.intake_content_revision IS DISTINCT FROM OLD.intake_content_revision THEN
+  UPDATE public.link_sales_inbox SET review=review||jsonb_build_object('intake_needs_review',true,'machine_source_changed',true),updated_at=now()
+   WHERE business_id='766f9317-97e4-43e8-aea0-ff8d7e318edc' AND source_conversation_id=NEW.id AND status='received' AND review ? 'intake_auto_v1';
+ END IF;RETURN NEW;
+END $iv$;
+REVOKE ALL ON FUNCTION public.link_lama_auto_invalidate_v1() FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER lama_auto_invalidate AFTER UPDATE OF intake_content_revision ON public.link_rrss_conversations FOR EACH ROW EXECUTE FUNCTION public.link_lama_auto_invalidate_v1();
 REVOKE ALL ON FUNCTION public.link_lama_machine_v1(text,jsonb) FROM PUBLIC,authenticated;
 GRANT EXECUTE ON FUNCTION public.link_lama_machine_v1(text,jsonb) TO anon;
