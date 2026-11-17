@@ -133,3 +133,11 @@
 .comunescucha-page .ce-send-feedback{font-size:11px;line-height:1.5;margin:8px 0 0;padding:8px 10px;border-radius:8px}
 .comunescucha-page .ce-send-feedback.success{background:#F0F7E7;color:#38652D}
 .comunescucha-page .ce-send-feedback.error{background:#FFF0EC;color:#9B4134}
+
+/* Keep the pending-intake warning readable in the existing mobile inspector. */
+.comunescucha-page .ce-intake-warning{margin:0;padding:12px;border:1px solid var(--ce-line);border-radius:10px;background:#fff;font-size:13px;line-height:1.45}
+@media(max-width:760px){
+ .comunescucha-page .comunescucha-shell.ce-mobile-intelligence>.ce-intelligence.ce-intake-pending{grid-template-columns:minmax(0,1fr)!important}
+}
+
+.ce-intake-review{display:flex;flex-direction:column;gap:10px;min-width:0}.ce-intake-review label{display:flex;gap:6px;align-items:flex-start}.ce-intake-review fieldset{display:flex;flex-direction:column;gap:7px;min-width:0;border:1px solid var(--ce-line);border-radius:8px}.ce-intake-review select,.ce-intake-review input[type=text]{width:100%;min-width:0}.ce-intake-review fieldset label{display:block}.ce-intake-sources{max-height:240px;overflow:auto}.ce-intake-sources label{font-size:12px;overflow-wrap:anywhere;padding:7px 0;border-bottom:1px solid var(--ce-line)}.ce-intake-review small{font-size:11px;line-height:1.5}
