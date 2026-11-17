@@ -27,7 +27,7 @@ function collect(root,s){
  for(const [key,selector] of Object.entries({directReviewed:'direct',requestReviewed:'real',newReviewed:'new-reviewed',crmReviewed:'crm-reviewed'})){const el=root.querySelector('[data-intake-'+selector+']');if(el)s[key]=el.checked;}
  const existing=root.querySelector('[data-intake-existing]');if(existing)s.existingLeadId=existing.value||null;
 }
-const errors={source_changed:'Llegó o cambió información. Vuelve a leer y revisar los mensajes.',draft_changed:'Otra revisión cambió este borrador. Ábrelo nuevamente.',duplicate_request:'La misma selección y datos ya están captados. Abre la solicitud existente; no se duplicó.',new_request_review_required:'Confirma que esta es una solicitud independiente.',request_not_editable:'La solicitud ya no es editable.',revision_history_limit:'Límite de revisiones alcanzado; no se descartó historia.',unresolved_conflict:'Hay datos en conflicto. Resuélvelos revisando fuentes antes de pasar al CRM.',multiple_leads:'Hay varias oportunidades abiertas de esta misma identidad. Selecciona la correcta.'};
+const errors={identity_review_required:'La identidad necesita revisión: falta un nombre de persona verificado. La captación queda guardada; no se creó cliente ni venta. Revisa el contacto antes de intentar incorporarlo al CRM.',source_changed:'Llegó o cambió información. Vuelve a leer y revisar los mensajes.',draft_changed:'Otra revisión cambió este borrador. Ábrelo nuevamente.',duplicate_request:'La misma selección y datos ya están captados. Abre la solicitud existente; no se duplicó.',new_request_review_required:'Confirma que esta es una solicitud independiente.',request_not_editable:'La solicitud ya no es editable.',revision_history_limit:'Límite de revisiones alcanzado; no se descartó historia.',unresolved_conflict:'Hay datos en conflicto. Resuélvelos revisando fuentes antes de pasar al CRM.',multiple_leads:'Hay varias oportunidades abiertas de esta misma identidad. Selecciona la correcta.'};
 export function bindIntakeReview({state,row,db,render,root=document}){
  if(row?.business_id!==LAMA_BUSINESS_ID)return;const panel=root.querySelector('[data-intake-review]');if(!panel)return;
  const s=intakeSession(state,row),key=intakeSessionKey(row);const redraw=()=>{if(state.business?.id===row.business_id&&state.selectedConversationId===row.external_conversation_id)render()};
@@ -60,4 +60,4 @@ export function bindIntakeReview({state,row,db,render,root=document}){
  }catch(error){s.status='No se completó: '+String(error.message||error)+'. Verifica el estado antes de repetir; no hay reintentos automáticos.';}
  finally{s.busy=false;if(state.intakeReviews?.[key]===s)redraw();}
  });
-   }
+}
